@@ -1,5 +1,5 @@
 mod gate;
-mod wire_label;
-mod binary_wire_labels;
-mod util;
+mod gate_info;
 mod gmw;
+mod util;
+mod wire_label;
