@@ -3,7 +3,7 @@ use crate::wire_label::WireLabel;
 use crate::gate_info::GateInfo;
 use sha3::{Sha3_256, Digest};
 
-fn gen_wire_labels<const K: usize>(
+pub fn gen_wire_labels<const K: usize>(
   num_wires: usize,
 ) -> Vec<[WireLabel<K>; 2]> {
   let mut ws = vec![];
@@ -21,50 +21,85 @@ fn gen_wire_labels<const K: usize>(
   ws
 }
 
-fn construct_garbled_circuit<const K: usize>(
+fn k_to_vector(k: &[bool]) -> Vec<u8> {
+  let mut vec = vec![];
+  for b in k {
+    vec.push(if *b { 1 } else { 0 });
+  }
+  return vec;
+}
+
+fn xor_vecs(v1: &Vec<u8>, v2: &Vec<u8>) -> Vec<u8> {
+  let v1_len = v1.len();
+  let v2_len = v2.len();
+
+  let mut v1 = v1.clone();
+  let mut v2 = v2.clone();
+
+  // Pad the shorter vector with zeros at the front
+  if v1_len < v2_len {
+    let padding = vec![0; v2_len - v1_len];
+    v1.splice(0..0, padding);
+  } else if v1_len > v2_len {
+    let padding = vec![0; v1_len - v2_len];
+    v2.splice(0..0, padding);
+  }
+
+  v1.iter()
+    .zip(v2.iter())
+    .map(|(a, b)| a ^ b)
+    .collect()
+}
+
+pub fn construct_garbled_table<const K: usize>(
   a_id: usize,
   b_id: usize,
   c_id: usize,  // output
   i: usize,  // gate id
   wire_labels: &Vec<[WireLabel<K>; 2]>,
   op: impl Fn(bool, bool) -> bool,
-) -> Vec<[Vec<bool>; 4]> {
-  let es = vec![];
+) -> [Vec<u8>; 4] {
+  let mut table: [Vec<u8>; 4] = [
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    ];
 
   for v_a in [false, true] {
     for v_b in [false, true] {
-      let a_label = wire_labels[a_id][v_a as usize];
-      let b_label = wire_labels[b_id][v_b as usize];
+      let a_label = &wire_labels[a_id][v_a as usize];
+      let b_label = &wire_labels[b_id][v_b as usize];
 
       let mut hasher = Sha3_256::new();
-      hasher.update(a_label.k);
-      hasher.update(b_label.k);
-      hasher.update(i);
-      let hash = hasher.finalize();
+
+      hasher.update(k_to_vector(&a_label.k));
+      hasher.update(k_to_vector(&b_label.k));
+      hasher.update(i.to_be_bytes());
+      let hash: Vec<u8> = hasher.finalize().to_vec();
 
       let gate_value = op(v_a, v_b);
-      let c_label = wire_labels[c_id][gate_value as usize];
-      let value = hash ^ c_label.serialize(); 
+      let c_label = &wire_labels[c_id][gate_value as usize];
+      let c_k_vec = k_to_vector(&c_label.k); 
+      let value = xor_vecs(&hash, &c_k_vec);
 
       let p_a = a_label.p as usize;
       let p_b = b_label.p as usize;
 
       // es is sorted based on p_a and p_b
-      let e: [Vec<bool>; 4];
       let index: usize = (p_a << 1) | p_b;
-      e[index] = value;
-      es.push(e);
+      table[index] = value;
     }
   }
-  es
+  table
 }
 
 // number of wires of a balanced binary tree with num_inputs leaves
-fn get_number_of_wires(num_inputs: usize) -> usize {
+pub fn get_number_of_wires(num_inputs: usize) -> usize {
   (1 << (num_inputs.ilog2() + 1)) - 1
 }
 
-fn gen_gate_info(num_wires: usize) -> Vec<GateInfo> {
+pub fn gen_gate_info(num_wires: usize) -> Vec<GateInfo> {
   let mut assignments = vec![];
 
   let mut id = 0;
@@ -112,7 +147,7 @@ mod tests {
     let wire_labels = gen_wire_labels::<4>(num_wires);
 
     for gi in gen_gate_info(num_wires) {
-      construct_garbled_circuit(
+      construct_garbled_table(
         gi.left_wire,
         gi.right_wire,
         gi.out_wire,
