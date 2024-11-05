@@ -1,18 +1,24 @@
-use crate::wire_label::WireLabel;
-
-pub struct And<const K: usize> {
-  a: WireLabel::<K>,
-  b: WireLabel::<K>,
-  out: WireLabel::<K>
+#[derive(Debug)]
+pub struct Gate {
+  pub id: usize,
+  pub left_wire: usize,
+  pub right_wire: usize,
+  pub out_wire: usize,
 }
 
-impl<const K: usize> And<K> {
+impl Gate {
   pub fn new(
-    a: WireLabel::<K>,
-    b: WireLabel::<K>,
-    out: WireLabel::<K>,
+    id: usize,
+    left_wire: usize,
+    right_wire: usize,
+    out_wire: usize,
   ) -> Self {
-    And { a, b, out }
+    Gate {
+      id,
+      left_wire,
+      right_wire,
+      out_wire,
+    }
   }
 }
 
