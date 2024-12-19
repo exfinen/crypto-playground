@@ -1,5 +1,6 @@
+/*
 use crate::gate::Gate;
-use crate::util::gen_random_binary_val;
+use crate::util::{gen_random_binary_val, get_num_wires, get_num_wires};
 use crate::wire_label::WireLabel;
 
 use sha3::{Sha3_256, Digest};
@@ -102,14 +103,6 @@ pub fn construct_garbled_table<const K: usize>(
   table
 }
 
-pub fn get_num_wires(depth: usize) -> usize {
-  (1 << (depth + 1)) - 1
-}
-
-fn get_num_nodes(depth: usize) -> usize {
-  get_num_wires(depth - 1)
-}
-
 pub fn build_gates(depth: usize) -> Vec<Gate> {
   let num_nodes = get_num_nodes(depth);
 
@@ -188,48 +181,47 @@ pub fn construct_decoding_tables<const K: usize>(
 
     dec_tables.push(sorted_e);
   }
-
   dec_tables
+}
+
+pub fn run_protocol() -> () {
+  // 1.
+  // P1 plays the role of GC generator and runs the algorithm of Figure 3.1.
+  // P1 then sends the obtained GC hat(C) (including the output decoding table) to P2
+  //
+  // 2.
+  // P1 sends to P2 active wire labels for the wires of which P1 provides input.
+  //
+  // 3.
+  // For each wire w_i on which P2 provides input, P1 and P2 execute an OT where P1
+  // plays the role of the Sender, and P2 plays the role of Receiver:
+  //
+  // (a) P1's two input secrets are the two labels for the wire, and P2's choice-bit
+  // input is its input on that wire
+  //
+  // (b) Upon completion of the OT, P2 receives active wire label on the wire.
+  //
+  // 4.
+  // P2 evaluates received hat(C) gate-by-gate, starting with the active labels
+  // on the input wires.
+  //
+  // (a) For gate G_i with garbled table T = (e_{0,0}, ..., e_{1,1}) and active input
+  // labels w_a = (k_a, p_a), w_b = (k_b, p_b), P2 computes active output label
+  // w_c = (k_c, p_c)
+  //
+  //        w_c = H(k_a || k_b || i) xor e_{p_a,p_b}
+  //
+  //  5.
+  //  Obtaining output using decoding tables. Once all gates of hat(C) are evaluated,
+  //  using "out" for the second key to decode the final output gates, P2 obtains
+  //  the final output labels which are qeual to the plaintext output of the
+  //  computatio. P2 sends the obtained output to P1, and they both output it.
+  //
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn test_get_num_wires() {
-    assert!(get_num_wires(0) == 1);  // 2^0 = 1
-    assert!(get_num_wires(1) == 3);  // 2^1 = 2
-    assert!(get_num_wires(2) == 7);  // 2^3 = 8
-    assert!(get_num_wires(3) == 15); // 2^4 = 16
-    assert!(get_num_wires(4) == 31); // 2^5 = 32
-  }
-
-  #[test]
-  fn test_gen_gates() {
-    let depth = 3;
-    let gates = &build_gates(depth);
-
-    fn f(
-      gates: &Vec<Gate>,
-      gate_id: usize,
-      left_wire: usize,
-      right_wire: usize,
-      out_wire: usize,
-    ) {
-      assert!(gates[gate_id].left_wire == left_wire);
-      assert!(gates[gate_id].right_wire == right_wire);
-      assert!(gates[gate_id].out_wire == out_wire);
-    }
-
-    f(gates, 0, 0, 1, 8);
-    f(gates, 1, 2, 3, 9);
-    f(gates, 2, 4, 5, 10);
-    f(gates, 3, 6, 7, 11);
-    f(gates, 4, 8, 9, 12);
-    f(gates, 5, 10, 11, 13);
-    f(gates, 6, 12, 13, 14);
-  }
 
   #[test]
   fn test_construct_decoding_table() {
@@ -260,3 +252,4 @@ mod tests {
   //   }
   // }
 }
+*/
