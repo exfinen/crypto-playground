@@ -1,7 +1,6 @@
 use crate::building_block::{
   gate_type::GateType,
   garbled_table::GarbledTable,
-  output_decoding_table::OutputDecodingTable,
 };
 
 #[derive(Debug)]
@@ -12,7 +11,6 @@ pub struct Gate {
   pub left: usize,
   pub right: usize,
   pub garbled_table: GarbledTable,
-  pub output_decoding_table: OutputDecodingTable,
 }
 
 impl Gate {
@@ -23,7 +21,6 @@ impl Gate {
     left: usize,
     right: usize,
     garbled_table: GarbledTable,
-    output_decoding_table: OutputDecodingTable,
   ) -> Self {
     let gate = Gate {
       index,
@@ -32,7 +29,6 @@ impl Gate {
       right,
       out,
       garbled_table,
-      output_decoding_table,
     };
     gate
   }

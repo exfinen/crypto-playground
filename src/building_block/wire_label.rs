@@ -1,6 +1,7 @@
 use crate::building_block::util::gen_random_binary_val;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WireLabel {
   pub b: bool,
   pub k: Vec<u8>,  // key of length K
@@ -13,9 +14,5 @@ impl WireLabel {
       .take(k)
       .collect();
     WireLabel { b, k, p }
-  }
-
-  pub fn serialize(&self) -> &Vec<u8> {
-    &self.k
   }
 }

@@ -5,6 +5,7 @@ use crate::building_block::{
   output_decoding_table::OutputDecodingTable,
 };
 
+#[derive(Debug)]
 pub struct Gates {
   pub gates: Vec<Gate>,
 }
@@ -23,7 +24,6 @@ impl Gates {
     left: usize,
     right: usize,
     garbled_table: GarbledTable,
-    output_decoding_table: OutputDecodingTable,
   ) -> usize {
     let index = self.gates.len();
 
@@ -34,7 +34,6 @@ impl Gates {
       left,
       right,
       garbled_table,
-      output_decoding_table,
     );
     self.gates.push(gate);
 

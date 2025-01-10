@@ -1,30 +1,50 @@
-use crate::building_block::gate_type::GateType;
+pub enum GateModelBody {
+  Values,
+  Models(Box<GateModel>, Box<GateModel>),
+}
 
-type Children = (GateModel, GateModel);
-
-pub struct GateModel {
-  pub gate_type: GateType,
-  pub left: Option<Box<GateModel>>,
-  pub right: Option<Box<GateModel>>,
+pub enum GateModel {
+  And(GateModelBody),
+  Or(GateModelBody),
 }
 
 impl GateModel {
-  pub fn and(left: Option<Box<GateModel>>, right: Option<Box<GateModel>>) -> Box<Self> {
-    let model = GateModel {
-      gate_type: GateType::And,
-      left,
-      right,
-    };
-    Box::new(model)
+  pub fn int_and(
+    left: Box<GateModel>,
+    right: Box<GateModel>,
+  ) -> Box<GateModel> {
+    Box::new(
+      GateModel::And(
+        GateModelBody::Models(left, right)
+      )
+    )
   }
 
-  pub fn or(left: Option<Box<GateModel>>, right: Option<Box<GateModel>>) -> Box<Self> {
-    let model = GateModel {
-      gate_type: GateType::Or,
-      left,
-      right,
-    };
-    Box::new(model)
+  pub fn leaf_and() -> Box<GateModel> {
+    Box::new(
+      GateModel::And(
+        GateModelBody::Values
+      )
+    )
+  }
+
+  pub fn int_or(
+    left: Box<GateModel>,
+    right: Box<GateModel>,
+  ) -> Box<GateModel> {
+    Box::new(
+      GateModel::Or(
+        GateModelBody::Models(left, right)
+      )
+    )
+  }
+
+  pub fn leaf_or() -> Box<GateModel> {
+    Box::new(
+      GateModel::Or(
+        GateModelBody::Values
+      )
+    )
   }
 }
 

@@ -4,147 +4,200 @@ use crate::building_block::{
   garbled_table::GarbledTable,
   gates::Gates,
   gate_type::GateType,
-  gate_model::GateModel,
+  gate_model::{GateModel, GateModelBody},
   output_decoding_table::OutputDecodingTable,
+  wire::Wire,
+  wire_label::WireLabel,
   wires::Wires,
 };
 
 #[derive(Debug)]
 pub struct Circuit {
-  pub root: usize,
+  pub root_gate_index: usize,
+  pub output_decoding_table: OutputDecodingTable,
+  input_wires: Vec<usize>,
+  wires: Wires,
+  gates: Gates,
 }
 
 impl Circuit {
-  fn build_leaf_gate(
-    gate_model: &GateModel,
-    out_index: usize,
+  fn gen_leaf_gate(
+    gate_type: &GateType,
+    out_wire: usize,
+    left_wire: usize,
+    right_wire: usize,
     gates: &mut Gates,
     wires: &mut Wires,
+    input_wires: &mut Vec<usize>,
   ) -> usize {
-    let left_index = wires.create(true);
-    let right_index = wires.create(true);
-
     let garbled_table = GarbledTable::new(
       gates.next_index(),
-      out_index,
-      left_index,
-      right_index,
-      GateType::func(&gate_model.gate_type),
+      out_wire,
+      left_wire,
+      right_wire,
+      GateType::func(gate_type),
       wires,
     );
-    let output_decoding_table = OutputDecodingTable::new(
-      gates.next_index(),
-      out_index,
-      wires,
-    );
+    input_wires.push(left_wire);
+    input_wires.push(right_wire);
 
     gates.create(
-      &gate_model.gate_type,
-      out_index,
-      left_index,
-      right_index,
+      gate_type,
+      out_wire,
+      left_wire,
+      right_wire,
       garbled_table,
-      output_decoding_table,
     )
   }
 
-  fn build_internal_gate(
+  fn gen_internal_gate(
+    gate_type: &GateType,
     K: usize,
-    gate_model: &GateModel,
-    out_index: usize,
+    left_model: &GateModel,
+    right_model: &GateModel,
+    out_wire: usize,
+    left_wire: usize,
+    right_wire: usize,
     gates: &mut Gates,
     wires: &mut Wires,
+    input_wires: &mut Vec<usize>,
   ) -> usize {
-    let left_index = wires.create(false);
-    let right_index = wires.create(false);
-
-    // recursively build left and right sub-circuits
-    let left_gate = Self::build(
+    Self::build(
       K,
-      gate_model.left.as_ref().unwrap(),
-      left_index,
+      left_model,
+      left_wire,
       gates,
       wires,
+      input_wires,
     );
-    
-    let right_gate = Self::build(
+    Self::build(
       K,
-      gate_model.right.as_ref().unwrap(),
-      right_index,
-      gates,
+      right_model,
+      right_wire,
+       gates,
       wires,
+      input_wires,
     );
-
     let garbled_table = GarbledTable::new(
       gates.next_index(),
-      out_index,
-      left_gate,
-      right_gate,
-      GateType::func(&gate_model.gate_type),
+      out_wire,
+      left_wire,
+      right_wire,
+      GateType::func(&GateType::And),
       wires,
     );
-    let output_decoding_table = OutputDecodingTable::new(
-      gates.next_index(),
-      out_index,
-      wires,
-    );
-
     gates.create(
-      &gate_model.gate_type,
-      out_index,
-      left_gate,
-      right_gate,
+      gate_type,
+      out_wire,
+      left_wire,
+      right_wire,
       garbled_table,
-      output_decoding_table,
     )
   }
-
   fn build(
     K: usize,
     gate_model: &GateModel,
-    out_index: usize,
+    out_wire: usize,
     gates: &mut Gates,
     wires: &mut Wires,
+    input_wires: &mut Vec<usize>,
   ) -> usize {
-    // if the gate is internal gate
-    if gate_model.left.is_some() && gate_model.right.is_some() {
-      Self::build_internal_gate(
-        K,
-        gate_model,
-        out_index,
-        gates,
-        wires,
-      )
-    // if the gate is leaf gate
-    } else if gate_model.left.is_none() && gate_model.right.is_none() {
-      Self::build_leaf_gate(
-        gate_model,
-        out_index,
-        gates,
-        wires,
-      )
-    } else {
-      panic!("Malformed gate model. Either both children should exist or missing.");
+    let left_wire = wires.create(false);
+    let right_wire = wires.create(false);
+
+    match gate_model {
+      GateModel::And(GateModelBody::Models(left_model, right_model)) => {
+        Self::gen_internal_gate(
+          &GateType::And,
+          K,
+          left_model,
+          right_model,
+          out_wire,
+          left_wire,
+          right_wire,
+          gates,
+          wires,
+          input_wires,
+        )
+      },
+      GateModel::And(GateModelBody::Values) => {
+        Self::gen_leaf_gate(
+          &GateType::And,
+          out_wire,
+          left_wire,
+          right_wire,
+          gates,
+          wires,
+          input_wires,
+        )
+      },
+      GateModel::Or(GateModelBody::Models(left_model, right_model)) => {
+        Self::gen_internal_gate(
+          &GateType::Or,
+          K,
+          left_model,
+          right_model,
+          out_wire,
+          left_wire,
+          right_wire,
+          gates,
+          wires,
+          input_wires,
+        )
+      },
+      GateModel::Or(GateModelBody::Values) => {
+        Self::gen_leaf_gate(
+          &GateType::Or,
+          out_wire,
+          left_wire,
+          right_wire,
+          gates,
+          wires,
+          input_wires,
+        )
+      },
     }
+  }
+
+  pub fn get_input_wire(&self, index: usize) -> &Wire {
+    let wire_index = self.input_wires[index];
+    self.wires.get(wire_index)
+  } 
+
+  pub fn evaluate(&self, _inputs: Vec<&WireLabel>) -> bool {
+    false
   }
 
   pub fn new(
     root_gate_model: &GateModel,
     K: usize,
-    gates: &mut Gates,
-    wires: &mut Wires,
   ) -> Self {
-    let root_out_index = wires.create(false);
-    let root = Self::build(
+    let mut gates = Gates::new();
+    let mut wires = Wires::new(K);
+    let mut input_wires = Vec::<usize>::new();
+    let root_out_wire = wires.create(false);
+
+    let root_gate_index = Self::build(
       K,
       root_gate_model,
-      root_out_index,
-      gates,
-      wires,
+      root_out_wire,
+      &mut gates,
+      &mut wires,
+      &mut input_wires,
+    );
+
+    let output_decoding_table = OutputDecodingTable::new(
+      root_gate_index,
+      root_out_wire,
+      &mut wires,
     );
 
     Circuit {
-      root,
+      root_gate_index,
+      output_decoding_table,
+      input_wires,
+      gates,
+      wires,
     }
   }
 }
