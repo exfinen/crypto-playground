@@ -1,9 +1,12 @@
+#![allow(dead_code)]
+
 use crate::building_block::{
   util::xor_vecs,
   wire_label::WireLabel,
   wires::Wires,
 };
 use sha3::{Sha3_256, Digest};
+use bincode;
 
 #[derive(Debug)]
 pub struct GarbledTable {
@@ -23,7 +26,7 @@ impl GarbledTable {
     hasher.update(&gate_id.to_be_bytes());
 
     let lhs = &hasher.finalize().to_vec();
-    let rhs = out_label.serialize();
+    let rhs = bincode::serialize(out_label).unwrap();
 
     xor_vecs(&lhs, &rhs)
   }

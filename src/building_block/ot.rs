@@ -3,7 +3,10 @@ use rsa::{
   RsaPrivateKey as PrivKey,
   RsaPublicKey as PubKey,
 };
-use crate::building_block::wires::Wire;
+use crate::building_block::{
+  wire::Wire,
+  wire_label::WireLabel,
+};
 
 // public key-based semi-honest OT
 pub struct OT();
@@ -53,7 +56,7 @@ impl OT {
     (enc_false_wire_label, enc_true_wire_label)
   }
 
-  pub fn decrypt(enc_wire_label: &[u8], priv_key: &PrivKey) -> Option<Wire> {
+  pub fn decrypt(enc_wire_label: &[u8], priv_key: &PrivKey) -> Option<WireLabel> {
     match priv_key.decrypt(Pkcs1v15Encrypt, enc_wire_label) {
       Ok(wire_label) => Some(bincode::deserialize(&wire_label).unwrap()),
       Err(_) => None,

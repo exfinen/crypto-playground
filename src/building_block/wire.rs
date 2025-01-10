@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::building_block::{
   wire_label::WireLabel,
   util::gen_random_binary_val,

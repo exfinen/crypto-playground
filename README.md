@@ -1,3 +1,3 @@
 # mpc-playground
 
-Currently implementing GMW protocol.
+Currently implementing Yao's GC protocol.

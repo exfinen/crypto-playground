@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::building_block::util::get_num_nodes;
 
 #[derive(Debug)]

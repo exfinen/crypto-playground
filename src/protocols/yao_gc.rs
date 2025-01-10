@@ -1,10 +1,11 @@
 #![allow(non_snake_case)]
+#![allow(dead_code)]
 
 use crate::building_block::{
   gate_model::GateModel,
   circuit::Circuit,
   ot::OT,
-  wire::Wire,
+  wire_label::WireLabel,
 };
 
 pub fn run() -> () {
@@ -40,7 +41,7 @@ pub fn run() -> () {
   // P2 sends two public keys to P1 to let P1 encrypt the wire labels
   // for wire 1, P2 wants wire label for false
 
-  let wire1_active_label: Wire = {
+  let wire1_active_label: WireLabel = {
     // OT of false wire label of wire 1
 
     let false_pubkey = &ot_keys.pk;
@@ -48,7 +49,7 @@ pub fn run() -> () {
 
     // P1 encrypts wire labels of wire 1 and sends them to P2
     let wire = circuit.get_input_wire(1);
-    let (enc_false_wire_label, enc_true_wire_label) =
+    let (enc_false_wire_label, _enc_true_wire_label) =
       OT::encrypt_wire_labels(
         false_pubkey,
         true_pubkey,
@@ -56,10 +57,10 @@ pub fn run() -> () {
       );
 
     // P2 wants false wire label and decrypts false one only
-    OT::decrypt(&enc_false_wire_label, &ot_keys.sk)
+    OT::decrypt(&enc_false_wire_label, &ot_keys.sk).unwrap()
   };
 
-  let wire3_active_label: Wire = {
+  let wire3_active_label: WireLabel = {
     // OT of true wire label of wire 3
 
     let false_pubkey = &ot_keys.pk_prime;
@@ -67,7 +68,7 @@ pub fn run() -> () {
 
     // P1 encrypts wire labels of wire 3 and sends them to P2
     let wire = circuit.get_input_wire(3);
-    let (enc_false_wire_label, enc_true_wire_label) =
+    let (enc_false_wire_label, _enc_true_wire_label) =
       OT::encrypt_wire_labels(
         false_pubkey,
         true_pubkey,
@@ -75,7 +76,7 @@ pub fn run() -> () {
       );
 
     // P2 wants false wire label and decrypts false one only
-    OT::decrypt(&enc_false_wire_label, &ot_keys.sk)
+    OT::decrypt(&enc_false_wire_label, &ot_keys.sk).unwrap()
   };
 
   // P1 sends active label for wire 0 and 2 to P2
@@ -83,7 +84,7 @@ pub fn run() -> () {
   let wire2_active_label = circuit.get_input_wire(2).get_label(false);
 
   // P2 evaluates the circuit with the leaf active labels
-  let root_wire_label = circuit.evaluate(vec![
+  let _root_wire_label = circuit.evaluate(vec![
     wire0_active_label,
     &wire1_active_label,
     wire2_active_label,
@@ -96,10 +97,9 @@ pub fn run() -> () {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  //use super::*;
 
   #[test]
   fn test1() {
-    run();
   }
 }

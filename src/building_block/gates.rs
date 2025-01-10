@@ -1,8 +1,9 @@
+#![allow(dead_code)]
+
 use crate::building_block::{
   garbled_table::GarbledTable,
   gate::Gate,
   gate_type::GateType,
-  output_decoding_table::OutputDecodingTable,
 };
 
 #[derive(Debug)]

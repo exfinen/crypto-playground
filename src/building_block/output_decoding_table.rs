@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::building_block::wires::Wires;
 use sha3::{Sha3_256, Digest};
 

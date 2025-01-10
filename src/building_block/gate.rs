@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::building_block::{
   gate_type::GateType,
   garbled_table::GarbledTable,

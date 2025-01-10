@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub enum GateModelBody {
   Values,
   Models(Box<GateModel>, Box<GateModel>),
