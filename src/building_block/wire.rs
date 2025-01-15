@@ -14,17 +14,13 @@ pub struct Wire {
 }
 
 impl Wire {
-  fn gen_label(b: bool, p: bool, k: usize) -> WireLabel {
-    WireLabel::new(b, p, k)
-  }
-
   pub fn new(k: usize, index: usize) -> Self {
     let p = gen_random_binary_val();  
     Wire {
       index,
       labels: [
-        WireLabel::new(false, p, k),
-        WireLabel::new(true, !p, k),
+        WireLabel::new(index, false, p, k),
+        WireLabel::new(index, true, !p, k),
       ]
     }
   }

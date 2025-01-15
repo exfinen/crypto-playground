@@ -11,10 +11,11 @@ use crate::building_block::{
 // public key-based semi-honest OT
 pub struct OT();
 
+#[derive(Debug)]
 pub struct OTKeys {
   pub sk: PrivKey,
-  pub pk: PubKey,
-  pub pk_prime: PubKey,
+  pub pk_with_sk: PubKey,
+  pub pk_without_sk: PubKey,
 }
 
 impl OT {
@@ -28,32 +29,32 @@ impl OT {
     };
     OTKeys {
       sk,
-      pk,
-      pk_prime,
+      pk_with_sk: pk,       // has associated private key - sk
+      pk_without_sk: pk_prime, // dos not have associated private key
     }
   }
 
   pub fn encrypt_wire_labels(
-    false_pub_key: &PubKey,
     true_pub_key: &PubKey,
+    false_pub_key: &PubKey,
     wire: &Wire,
   ) -> (Vec<u8>, Vec<u8>) {
     let mut rng = rand::thread_rng();
 
-    let false_wire_label = bincode::serialize(wire.get_label(false)).unwrap();
     let true_wire_label = bincode::serialize(wire.get_label(true)).unwrap();
-
-    let enc_false_wire_label = 
-      false_pub_key
-        .encrypt(&mut rng, Pkcs1v15Encrypt, &false_wire_label)
-        .expect("Failed to encrypt false key");
+    let false_wire_label = bincode::serialize(wire.get_label(false)).unwrap();
 
     let enc_true_wire_label =
       true_pub_key
         .encrypt(&mut rng, Pkcs1v15Encrypt, &true_wire_label)
         .expect("Failed to encrypt false key");
 
-    (enc_false_wire_label, enc_true_wire_label)
+    let enc_false_wire_label = 
+      false_pub_key
+        .encrypt(&mut rng, Pkcs1v15Encrypt, &false_wire_label)
+        .expect("Failed to encrypt false key");
+
+    (enc_true_wire_label, enc_false_wire_label)
   }
 
   pub fn decrypt(enc_wire_label: &[u8], priv_key: &PrivKey) -> Option<WireLabel> {

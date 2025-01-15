@@ -3,6 +3,7 @@
 
 use crate::building_block::{
   garbled_table::GarbledTable,
+  gate::Gate,
   gates::Gates,
   gate_type::GateType,
   gate_model::{GateModel, GateModelBody},
@@ -95,6 +96,7 @@ impl Circuit {
       garbled_table,
     )
   }
+
   fn build(
     K: usize,
     gate_model: &GateModel,
@@ -107,6 +109,7 @@ impl Circuit {
     let right_wire = wires.create(false);
 
     match gate_model {
+      // Internal And
       GateModel::And(GateModelBody::Models(left_model, right_model)) => {
         Self::gen_internal_gate(
           &GateType::And,
@@ -121,6 +124,7 @@ impl Circuit {
           input_wires,
         )
       },
+      // Leaf And
       GateModel::And(GateModelBody::Values) => {
         Self::gen_leaf_gate(
           &GateType::And,
@@ -132,6 +136,7 @@ impl Circuit {
           input_wires,
         )
       },
+      // Internal Or
       GateModel::Or(GateModelBody::Models(left_model, right_model)) => {
         Self::gen_internal_gate(
           &GateType::Or,
@@ -146,6 +151,7 @@ impl Circuit {
           input_wires,
         )
       },
+      // Leaf Or
       GateModel::Or(GateModelBody::Values) => {
         Self::gen_leaf_gate(
           &GateType::Or,
@@ -165,8 +171,47 @@ impl Circuit {
     self.wires.get(wire_index)
   } 
 
-  pub fn evaluate(&self, _inputs: Vec<&WireLabel>) -> bool {
-    false
+  fn get_gate_with_wires(&self, left: usize, right: usize) -> &Gate {
+    for gate in &self.gates {
+      if gate.left == left && gate.right == right {
+        return gate;
+      }
+    }
+    panic!("Gate with left={} and right={} not found. Check code.", left, right);
+  }
+
+  pub fn evaluate(&self, inputs: Vec<&WireLabel>) -> WireLabel {
+    let mut eval_wire_labels = Vec::<WireLabel>::new();
+    for input in inputs {
+      eval_wire_labels.push(input.clone());
+    }
+
+    while eval_wire_labels.len() >= 2 {
+      // get gate
+      let left = eval_wire_labels.remove(0);
+      let right = eval_wire_labels.remove(0);
+      let gate = self.get_gate_with_wires(left.wire_index, right.wire_index);
+
+      // evaluate gate
+      let out_wire_label = gate.garbled_table.evaluate(
+        &gate.index,
+        &left,
+        &right,
+      );
+
+      let root_out_wire = self.gates.get(self.root_gate_index).out;
+
+      if out_wire_label.wire_index == root_out_wire {
+        // if the output wire is the root wire,
+        // return the WireLabel corresponding to the evaluation result
+        return out_wire_label;
+
+      } else {
+        // otherwise, add the output wire_label to input wire label list
+        eval_wire_labels.push(out_wire_label);
+      }
+    }
+    panic!("Malformed circuit found. Check code.");
   }
 
   pub fn new(

@@ -1,3 +1,7 @@
 # mpc-playground
 
-Currently implementing Yao's GC protocol.
+Implemented:
+- Yao's Garbled Circuit
+
+Implemenring:
+- GG18

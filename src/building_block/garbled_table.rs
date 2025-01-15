@@ -14,20 +14,26 @@ pub struct GarbledTable {
 }
 
 impl GarbledTable {
-  fn compute_hash(
+  pub fn compute_hash_lhs(
+    k_a: &Vec<u8>,
+    k_b: &Vec<u8>,
+    gate_id: &usize,
+  ) -> Vec<u8> {
+    let mut hasher = Sha3_256::new();
+    hasher.update(k_a);
+    hasher.update(k_b);
+    hasher.update(gate_id.to_be_bytes());
+    hasher.finalize().to_vec()
+  }
+
+  pub fn compute_hash(
     k_a: &Vec<u8>,
     k_b: &Vec<u8>,
     gate_id: &usize,
     out_label: &WireLabel,
   ) -> Vec<u8> {
-    let mut hasher = Sha3_256::new();
-    hasher.update(&k_a);
-    hasher.update(&k_b);
-    hasher.update(&gate_id.to_be_bytes());
-
-    let lhs = &hasher.finalize().to_vec();
+    let lhs = Self::compute_hash_lhs(k_a, k_b, gate_id);
     let rhs = bincode::serialize(out_label).unwrap();
-
     xor_vecs(&lhs, &rhs)
   }
 
@@ -80,6 +86,31 @@ impl GarbledTable {
       }
     }
     GarbledTable { table }
+  }
+
+  // returns the seralized output label
+  pub fn evaluate(
+    &self,
+    gate_id: &usize,
+    left: &WireLabel,
+    right: &WireLabel,
+  ) -> WireLabel {
+    // look up the table to get the encoded output wire label
+    let i = (left.p as usize) << 1 | (right.p as usize);
+    let enc_out_wire_label = &self.table[i];
+
+    // decode the output wire label
+    let hash_lhs: Vec<u8> = Self::compute_hash_lhs(
+      &left.k,
+      &right.k,
+      gate_id,
+    );
+    let ser_out_wire_label = xor_vecs(&hash_lhs, enc_out_wire_label);
+
+    let out_wire_label: WireLabel =
+      bincode::deserialize(&ser_out_wire_label).unwrap();
+
+    out_wire_label
   }
 }
 

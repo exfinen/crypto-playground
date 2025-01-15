@@ -5,10 +5,20 @@ use crate::building_block::{
   gate::Gate,
   gate_type::GateType,
 };
+use std::slice::Iter;
 
 #[derive(Debug)]
 pub struct Gates {
   pub gates: Vec<Gate>,
+}
+
+impl<'a> IntoIterator for &'a Gates {
+  type Item = &'a Gate;
+  type IntoIter = Iter<'a, Gate>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    self.gates.iter()
+  }
 }
 
 impl Gates {

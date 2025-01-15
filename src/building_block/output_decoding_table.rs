@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use crate::building_block::wires::Wires;
+use crate::building_block::{
+  wires::Wires,
+  wire_label::WireLabel,
+};
 use sha3::{Sha3_256, Digest};
 
 #[derive(Debug)]
@@ -9,18 +12,30 @@ pub struct OutputDecodingTable {
 }
 
 impl OutputDecodingTable {
-  fn compute_e(k: &Vec<u8>, j: &usize, v: bool) -> bool {
+  fn compute_e_lhs(k: &Vec<u8>, j: &usize) -> bool {
     let mut hasher = Sha3_256::new();
 
     hasher.update(k);
     hasher.update("out");
     hasher.update(&j.to_be_bytes());
 
-    let hash: Vec<u8> = hasher.finalize().to_vec();
+    let hash = hasher.finalize().to_vec();
     let lsb = hash[hash.len() - 1]; 
-    let lhs = if lsb % 2 == 1 { true } else { false };
+    lsb % 2 == 1
+  }
 
+  fn compute_e(k: &Vec<u8>, j: &usize, v: bool) -> bool {
+    let lhs = Self::compute_e_lhs(k, j);
     lhs ^ v
+  }
+
+  pub fn decode(&self, wire_label: &WireLabel) -> bool {
+    let lhs = Self::compute_e_lhs(
+      &wire_label.k,
+      &wire_label.wire_index,
+    );
+    let e = self.table[wire_label.p as usize];
+    e ^ lhs
   }
 
   pub fn new(
