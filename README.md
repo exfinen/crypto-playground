@@ -1,3 +1,8 @@
 # mpc-playground
 
-Currently implementing GMW protocol.
+Implemented:
+- Yao's Garbled Circuit
+
+Implemenring:
+- GG18
+

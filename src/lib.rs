@@ -1,5 +1,2 @@
-mod gate;
-mod gate_info;
-pub mod gmw;
-mod util;
-mod wire_label;
+mod building_block;
+mod protocols;
