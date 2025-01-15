@@ -84,8 +84,6 @@ Input: 0      1  2       3
     &wire3_active_label,
   ]); 
 
-  println!("Root wire label: {:?}", root_wire_label);
-
   // P2 gets the active value associated with the root active label
   // using output_decoding_table
   let circuit_eval_result =
