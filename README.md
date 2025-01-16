@@ -1,4 +1,4 @@
-# mpc-playground
+# crypto-playground
 
 Implemented:
 - Yao's Garbled Circuit
