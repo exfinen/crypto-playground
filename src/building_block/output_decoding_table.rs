@@ -39,7 +39,6 @@ impl OutputDecodingTable {
   }
 
   pub fn new(
-    gate_id: usize,
     out: usize,
     wires: &Wires,
   ) -> Self {
@@ -58,11 +57,11 @@ impl OutputDecodingTable {
       // compute e
       let e = Self::compute_e(
         &c_label.k,
-        &gate_id,
+        &out.index,
         v_c,
       );
 
-      let index = if e { 1 } else { 0 };
+      let index = out.get_label(v_c).p as usize;
       table[index] = e;
     }
 

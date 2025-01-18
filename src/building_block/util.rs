@@ -41,6 +41,23 @@ mod tests {
   use crate::building_block::wire_label::WireLabel;
   use crate::building_block::garbled_table::GarbledTable;
 
+  fn are_vecs_equal(v1: &Vec<u8>, v2: &Vec<u8>) -> bool {
+    let v1_len = v1.len();
+    let v2_len = v2.len();
+    let mut v1 = v1.clone();
+    let mut v2 = v2.clone();
+
+    // Pad the shorter vector with zeros at the end
+    if v1_len < v2_len {
+      let padding = vec![0; v2_len - v1_len];
+      v1.extend(padding);
+    } else if v1_len > v2_len {
+      let padding = vec![0; v1_len - v2_len];
+      v2.extend(padding);
+    }
+    v1 == v2
+  }
+ 
   #[test]
   fn test_get_num_wires() {
     assert!(get_num_wires(0) == 1);  // 2^0 = 1
