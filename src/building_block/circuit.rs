@@ -76,7 +76,7 @@ impl Circuit {
       K,
       right_model,
       right_wire,
-       gates,
+      gates,
       wires,
       input_wires,
     );
@@ -85,7 +85,7 @@ impl Circuit {
       out_wire,
       left_wire,
       right_wire,
-      GateType::func(&GateType::And),
+      GateType::func(&gate_type),
       wires,
     );
     gates.create(
@@ -233,7 +233,6 @@ impl Circuit {
     );
 
     let output_decoding_table = OutputDecodingTable::new(
-      root_gate_index,
       root_out_wire,
       &mut wires,
     );
