@@ -18,6 +18,20 @@ pub struct OTKeys {
   pub pk_without_sk: PubKey,
 }
 
+pub struct EncryptedWireLabels {
+  pub true_label: Vec<u8>,
+  pub false_label: Vec<u8>,
+}
+
+impl EncryptedWireLabels {
+  pub fn new(
+    true_label: Vec<u8>,
+    false_label: Vec<u8>,
+  ) -> EncryptedWireLabels {
+    EncryptedWireLabels { true_label, false_label }
+  }
+}
+
 impl OT {
   pub fn gen_keys(bits: usize) -> OTKeys {
     let mut rng = rand::thread_rng();
@@ -38,7 +52,7 @@ impl OT {
     true_pub_key: &PubKey,
     false_pub_key: &PubKey,
     wire: &Wire,
-  ) -> (Vec<u8>, Vec<u8>) {
+  ) -> EncryptedWireLabels {
     let mut rng = rand::thread_rng();
 
     let true_wire_label = bincode::serialize(wire.get_label(true)).unwrap();
@@ -54,7 +68,7 @@ impl OT {
         .encrypt(&mut rng, Pkcs1v15Encrypt, &false_wire_label)
         .expect("Failed to encrypt false key");
 
-    (enc_true_wire_label, enc_false_wire_label)
+    EncryptedWireLabels::new(enc_true_wire_label, enc_false_wire_label)
   }
 
   pub fn decrypt(enc_wire_label: &[u8], priv_key: &PrivKey) -> Option<WireLabel> {

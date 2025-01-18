@@ -1,7 +1,7 @@
 use crate::building_block::util::gen_random_binary_val;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct WireLabel {
   pub wire_index: usize,
   pub b: bool,
