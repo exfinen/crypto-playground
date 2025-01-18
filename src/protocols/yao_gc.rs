@@ -41,8 +41,6 @@ impl P1 {
     }
   }
 
-  // P1 constructs circuit with wires and gates
-  // each gate includes a garbled table
   fn construct_circuit(gate_model: Box<GateModel>) -> Circuit {
     let K = 64;
     Circuit::new(&gate_model, K)
