@@ -31,31 +31,19 @@ struct P1 {
 }
 
 impl P1 {
-  pub fn new(inputs: Vec<Input>) -> P1 {
+  pub fn new(
+    inputs: Vec<Input>,
+    gate_model: Box<GateModel>,
+  ) -> P1 {
     P1 {
-      circuit: P1::construct_circuit(),
+      circuit: P1::construct_circuit(gate_model),
       inputs,
     }
   }
 
   // P1 constructs circuit with wires and gates
   // each gate includes a garbled table
-  fn construct_circuit() -> Circuit {
-    /*
-   Circuit:
-             0|
-            (2:Or)
-          1/      2\
-       (0:And)    (1:Or)
-       3/   4\   5/    6\
-Input: 0      1  2       3
-    */
-    let gate_model = 
-      GateModel::int_or(
-        GateModel::leaf_and(),
-        GateModel::leaf_or(),
-      );
-
+  fn construct_circuit(gate_model: Box<GateModel>) -> Circuit {
     let K = 64;
     Circuit::new(&gate_model, K)
   }
@@ -115,7 +103,23 @@ impl<'a> P2<'a> {
 }
 
 pub fn run() -> () {
-  // P1 and P2 are in charge of providing inputs [0, 2] and [1, 3] respectively
+  // P1 and P2 both know the circuit structure
+  /*
+   Circuit:
+             0|
+            (2:Or)
+          1/      2\
+       (0:And)    (1:Or)
+       3/   4\   5/    6\
+Input: 0      1  2       3
+  */
+  let gate_model = 
+    GateModel::int_or(
+      GateModel::leaf_and(),
+      GateModel::leaf_or(),
+    );
+
+  // P1 and P2 are in charge of inputs [0, 2] and [1, 3] respectively
   let p1_inputs = vec![
     Input::new(0, true),
     Input::new(2, false),
@@ -125,7 +129,7 @@ pub fn run() -> () {
     Input::new(3, true),
   ];
 
-  let p1 = P1::new(p1_inputs.clone());
+  let p1 = P1::new(p1_inputs.clone(), gate_model);
 
   // P1 constructs the circuit with garbled tables and output decoding table
   // and passes it to P2

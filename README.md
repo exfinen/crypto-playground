@@ -1,4 +1,4 @@
-# crypto-playground
+# Crypto Playground
 
 Implemented:
 - Yao's Garbled Circuit
