@@ -16,11 +16,15 @@ pub struct PedersenCommitment {
 
 impl PedersenCommitment {
   pub fn new(
-    G: AdditiveGroup,
-    g: Element,
-    h: Element,
+    G: &AdditiveGroup,
+    g: &Element,
+    h: &Element,
   ) -> Self {
-    Self { G, g, h }
+    Self {
+      G: G.clone(),
+      g: g.clone(),
+      h: h.clone(),
+    }
   }
 
   pub fn commit(&self, u: &Integer) -> (Element, Integer) {
@@ -47,10 +51,17 @@ mod tests {
 
   #[test]
   fn test() {
+    let eleven = Integer::from(11); 
+    let two = Integer::from(2); 
+    let three = Integer::from(3); 
+
+    let group_11 = AdditiveGroup::new(&eleven);
+    let g = group_11.element(&two); 
+    let h = group_11.element(&three); 
     let _ = PedersenCommitment::new(
-      AdditiveGroup::new(&Integer::from(11)),
-      Element::new(Integer::from(11), Integer::from(2)),
-      Element::new(Integer::from(11), Integer::from(3)),
+      &group_11,
+      &g,
+      &h,
     );
   } 
 }

@@ -1,23 +1,23 @@
 #![allow(dead_code)]
 
-use rug::Integer;
+use rug::{Complete, Integer};
 use std::ops::{Add, Mul};
 
 #[derive(Clone, Debug)]
 pub struct Element {
-  pub order: Integer,
-  pub n: Integer,
+  order: Integer,
+  value: Integer,
 }
 
 impl PartialEq<Element> for Element {
   fn eq(&self, rhs: &Self) -> bool {
-    self.n == rhs.n
+    self.value == rhs.value
   }
 }
 
 impl PartialEq<Element> for &Element {
   fn eq(&self, rhs: &Element) -> bool {
-    self.n == rhs.n
+    self.value() == rhs.value()
   }
 }
 
@@ -25,9 +25,10 @@ impl Add<Element> for Element {
   type Output = Self;
 
   fn add(self, rhs: Self) -> Self {
-    assert_eq!(self.order, rhs.order, "Tried to add elements of different orders");
-    let res = (self.n + rhs.n) % &self.order;
-    Self::new(self.order.clone(), res)
+    self.assert_same_order(&rhs);
+    let res = (self.value_ref() + rhs.value_ref()).complete();
+    let res = res % &self.order;
+    Self::new(self.order_ref(), &res)
   }
 }
 
@@ -35,12 +36,10 @@ impl Add<&Element> for Element {
   type Output = Self;
 
   fn add(self, rhs: &Self) -> Self {
-    assert_eq!(self.order, rhs.order, "Tried to add elements of different orders");
-    let res: Integer = {
-      let lhs: Integer = (&self.n + &rhs.n).into();
-      lhs % self.order.clone()
-    };
-    Self::new(self.order.clone(), res)
+    self.assert_same_order(&rhs);
+    let res = (self.value_ref() + rhs.value_ref()).complete();
+    let res = res % &self.order;
+    Self::new(self.order_ref(), &res)
   }
 }
 
@@ -49,21 +48,22 @@ impl Mul<Element> for Element {
   type Output = Self;
 
   fn mul(self, rhs: Element) -> Self {
-    let mut n = rhs.n.clone(); 
+    let mut n = rhs.value(); 
     let mut res = Integer::ZERO;
-    let mut bit_amount = self.n.clone();
+    let mut bit_amount = self.value();
 
     while &n != &Integer::ZERO {
       // if the least significant bit is 1
-      if (&n & Integer::from(1)) != Integer::ZERO {
+      let lsb = (&n & Integer::ONE).complete();
+      if &lsb == Integer::ONE {
         // add the amount for the current bit to res
         res += &bit_amount;
       }
       // update bit_amount to represent the next bit 
-      bit_amount = bit_amount.clone() + bit_amount;
+      bit_amount = (&bit_amount + &bit_amount).complete();
       n >>= 1;  // shift to the right to test the next bit
     }
-    Element::new(self.order, res)
+    Element::new(&self.order, &res)
   }
 }
 
@@ -73,19 +73,20 @@ impl Mul<&Integer> for Element {
   fn mul(self, rhs: &Integer) -> Self {
     let mut n = rhs.clone(); 
     let mut res = Integer::ZERO;
-    let mut bit_amount = self.n.clone();
+    let mut bit_amount = self.value();
 
     while &n != &Integer::ZERO {
       // if the least significant bit is 1
-      if (&n & Integer::from(1)) != Integer::ZERO {
+      let lsb = (&n & Integer::ONE).complete();
+      if lsb != Integer::ZERO {
         // add the amount for the current bit to res
         res += &bit_amount;
       }
       // update bit_amount to represent the next bit 
-      bit_amount = bit_amount.clone() + bit_amount;
+      bit_amount = (&bit_amount + &bit_amount).complete();
       n >>= 1;  // shift to the right to test the next bit
     }
-    Element::new(self.order, res)
+    Element::new(&self.order, &res)
   }
 }
 
@@ -95,28 +96,53 @@ impl Mul<&Integer> for &Element {
   fn mul(self, rhs: &Integer) -> Element {
     let mut n = rhs.clone(); 
     let mut res = Integer::ZERO;
-    let mut bit_amount = self.n.clone();
+    let mut bit_amount = self.value();
 
     while &n != &Integer::ZERO {
       // if the least significant bit is 1
-      if (&n & Integer::from(1)) != Integer::ZERO {
+      let lsb = (&n & Integer::ONE).complete();
+      if lsb != Integer::ZERO {
         // add the amount for the current bit to res
         res += &bit_amount;
       }
       // update bit_amount to represent the next bit 
-      bit_amount = bit_amount.clone() + bit_amount;
+      bit_amount = (&bit_amount + &bit_amount).complete();
       n >>= 1;  // shift to the right to test the next bit
     }
-    Element::new(self.order.clone(), res)
+    Element::new(&self.order, &res)
   }
 }
 
 impl Element {
-  pub fn new(order: Integer, n: Integer) -> Element {
-    Element { order, n }
+  pub fn new(order: &Integer, value: &Integer) -> Element {
+    Element {
+      order: order.clone(),
+      value: value.clone(),
+    }
+  }
+
+  pub fn value_ref(&self) -> &Integer {
+    &self.value
+  }
+
+  pub fn value(&self) -> Integer {
+    self.value.clone()
+  }
+
+  pub fn order_ref(&self) -> &Integer {
+    &self.order
+  }
+
+  pub fn assert_same_order(&self, rhs: &Element) {
+    assert_eq!(&self.order, &rhs.order, "Orders differ");
+  }
+
+  pub fn assert_order(&self, rhs: &Integer) {
+    assert_eq!(&self.order, rhs, "The order and {:?} differ", rhs);
   }
 }
 
+#[derive(Clone, Debug)]
 pub struct AdditiveGroup {
   order: Integer,
 }
@@ -128,19 +154,21 @@ impl AdditiveGroup {
     }
   }
 
-  pub fn element(&self, n: &Integer) -> Element {
+  pub fn element(&self, value: &Integer) -> Element {
     Element {
       order: self.order.clone(),
-      n: n.clone(),
+      value: value.clone(),
     }
   }
 
-  // TODO implement this
   pub fn get_random_element(&self) -> Element {
-    let n = Integer::from(5);
+    use rug::rand::RandState;
+    let mut rand = RandState::new();
+    let bits = self.order.significant_bits();
+    let value = Integer::random_bits(bits, &mut rand).into();
     Element {
       order: self.order.clone(),
-      n
+      value
     }
   }
 }
@@ -156,7 +184,7 @@ mod tests {
     let a = group.element(&Integer::from(5));
     let b = group.element(&Integer::from(7));
     let c = a + b;
-    assert_eq!(c.n, 1);
+    assert_eq!(c.value, 1);
   } 
 }
 
