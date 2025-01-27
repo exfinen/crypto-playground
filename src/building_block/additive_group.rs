@@ -154,7 +154,12 @@ impl AdditiveGroup {
     }
   }
 
+  pub fn order_ref(&self) -> &Integer {
+    &self.order
+  }
+
   pub fn element(&self, value: &Integer) -> Element {
+    let value = value.clone() % &self.order;
     Element {
       order: self.order.clone(),
       value: value.clone(),

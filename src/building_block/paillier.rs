@@ -12,6 +12,10 @@ use crate::building_block::additive_group::{
 pub struct Paillier {
   n: Integer,
   nn: Integer,
+  pub z_n: AdditiveGroup,
+  pub z_nn: AdditiveGroup,
+  pub pk: PublicKey,
+  pub sk: SecretKey,
 }
 
 pub struct PublicKey {
@@ -24,19 +28,7 @@ pub struct SecretKey {
   q: Integer,
 }
 
-pub struct KeyPair {
-  pub pk: PublicKey,
-  pub sk: SecretKey,
-}
-
 impl Paillier {
-  // p and q need to be prime
-  pub fn new(p: Integer, q: Integer) -> Paillier {
-    let n = p * q;
-    let nn = n.clone().square();
-    Paillier { n, nn }
-  }
-
   fn gen_random_number() -> Integer {
     let mut rng = rand::thread_rng();
     Integer::from(rng.gen::<u128>())
@@ -53,52 +45,63 @@ impl Paillier {
     n
   }
 
-  pub fn gen_key() -> KeyPair {
-    let num_bits = 128;
-    let p = Self::gen_random_prime(num_bits);
-    let q = Self::gen_random_prime(num_bits);
+  pub fn new(num_bits: u32) -> Paillier {
+    let p = Integer::from(233u8); // Self::gen_random_prime(num_bits);
+    let q = Integer::from(211u8); //Self::gen_random_prime(num_bits);
     let n = Integer::from(&p * &q);
+    println!("p: {:?}, q: {:?}, n: {:?}", p, q, n);
 
-    let k = {
-      let k = Self::gen_random_number();
-      let group_n = AdditiveGroup::new(&n);
-      group_n.element(&k)
-    }; // k in Z_n
+    let z_n = AdditiveGroup::new(&n);
+    let k = z_n.get_random_element();
 
-    let nn = Integer::from(&n * &n);
-    let g = {
-      let kn: Integer = (k.value() * &n).into();
-      let group_nn = AdditiveGroup::new(&nn);
-      group_nn.element(&(kn + Integer::from(1)))
-    };
+    // 2417000569
+    let nn = (&n * &n).complete();
+    println!("nn: {:?}", nn);
+    let z_nn = AdditiveGroup::new(&nn);
 
-    let pk = PublicKey { n: n.clone(), g: g.value() };
+    // let g = {
+    //   let kn = (k.value_ref() * &n).complete();
+    //   let one_plus_kn = (Integer::ONE + &kn).complete();
+    //   (&one_plus_kn % &nn).complete()
+    // };
+    let g = Integer::from(524360);
+
+    let pk = PublicKey { n: n.clone(), g };
     let sk = SecretKey { p, q };
-    KeyPair { pk, sk }
+
+    Paillier {
+      n,
+      nn,
+      z_n,
+      z_nn,
+      pk,
+      sk,
+    }
   }
 
   // returns an element in Z_n^2
   pub fn encrypt(&self, pk: &PublicKey, m: &Element) -> Element {
-    let nn = (&pk.n * &pk.n).complete();
-    let group_nn = AdditiveGroup::new(&nn);
+    // m must be an element of Z_n
+    assert_eq!(m.order_ref(), self.z_n.order_ref());
 
     // select r randomly from Z_n^2
-    let r = group_nn.get_random_element();
+    let r = self.z_nn.element(&Integer::from(10418));
+    println!("r: {:?}", r.value());
 
-    // m must be an element of Z_n
-    m.assert_order(&self.n);
+    let nn = self.z_nn.order_ref();
+    let gm = pk.g.clone().pow_mod(m.value_ref(), nn).unwrap();
+    println!("g^m: {:?}", gm);
 
-    // g is in Z_n^2
-    // c is in Z_n^2
-    let c = {
-      let lhs = pk.g.clone().pow_mod(m.value_ref(), &nn).unwrap();
-      let rhs: Integer = r.value().pow_mod(&pk.n, &nn).unwrap();
-      group_nn.element(&(lhs + rhs))
-    };
-    c
+    // 857909725
+    let rn = r.value().clone().pow_mod(&pk.n, nn).unwrap();
+    println!("r^n: {:?}", rn);
+
+    // 1233063404
+    let c = gm * rn;
+    self.z_nn.element(&c)
   }
 
-  pub fn L(&self, u: &Element) -> Integer {
+  fn L(&self, u: &Element) -> Integer {
     let u_minus_1 = (u.value_ref() - Integer::ONE).complete();
     u_minus_1 / &self.n
   }
@@ -112,34 +115,44 @@ impl Paillier {
     let p_minus_1 = (&sk.p - 1u8).complete();
     let q_minus_1 = (&sk.q - 1u8).complete();
     let lambda = p_minus_1.lcm(&q_minus_1);
+    println!("lambda: {:?}", lambda);
 
-    let group_nn = AdditiveGroup::new(&self.nn);
+    let nn = &self.nn;
 
-    let lhs_arg = &group_nn.element(
-      &(c.value().pow_mod(&lambda, &self.nn).unwrap())
-    );
-    let rhs_arg = &group_nn.element(
-      &(pk.g.clone().pow_mod(&lambda, &self.nn).unwrap())
-    );
+    let lhs = self.z_nn.element(&(c.value().clone().pow_mod(&lambda, nn).unwrap()));
+    let rhs = self.z_nn.element(&(pk.g.clone().pow_mod(&lambda, nn).unwrap()));
 
-    let m = self.L(lhs_arg) / self.L(rhs_arg);
-    let group_n = AdditiveGroup::new(&pk.n);
-    group_n.element(&m)
+    // 19022
+    let lhs = self.L(&lhs);
+    println!("lhs: {:?}", lhs);
+
+    let rhs = self.L(&rhs);
+    println!("rhs: {:?}", rhs);
+
+    let rhs_inv = rhs.invert(&self.n).unwrap();
+
+    let m = lhs * rhs_inv;
+    self.z_n.element(&m)
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::building_block::additive_group::AdditiveGroup;
 
   #[test]
   fn test() {
-    let order = Integer::from(29);
-    let group = AdditiveGroup::new(&order);
+    let pal = Paillier::new(8);
+    let m = pal.z_n.element(&Integer::from(23u8));
+    println!("m: {:?}", m.value());
 
-    let _p = group.element(&Integer::from(5));
-    let _q = group.element(&Integer::from(7));
+    let c = pal.encrypt(&pal.pk, &m);
+    println!("c: {:?}", c.value());
+
+    let m_rec = pal.decrypt(&c, &pal.sk, &pal.pk);
+    println!("m (recovered): {:?}", m_rec.value());
+
+    assert_eq!(m.value(), m_rec.value());
   } 
 }
 
