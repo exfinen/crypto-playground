@@ -10,6 +10,11 @@ use crate::building_block::additive_group::{
   Element,
 };
 
+pub enum GCalculation {
+  Random,
+  KnPlusOne,
+}
+
 pub struct Paillier {
   n: Integer,
   nn: Integer,
@@ -45,7 +50,7 @@ impl Paillier {
     n
   }
 
-  pub fn new(num_bits: u32) -> Paillier {
+  pub fn new(num_bits: u32, g_calc: GCalculation) -> Paillier {
     let mut rng = RandState::new();
     let seed = {
       use rand::thread_rng;
@@ -64,34 +69,38 @@ impl Paillier {
     };
 
     let n = Integer::from(&p * &q);
-
     let z_n = AdditiveGroup::new(&n);
  
-    // k is coprime to n
-    let k = loop {
-      let k = Self::gen_random_number();
-      if &k.clone().gcd(&n) == Integer::ONE {
-        break k;
-      }
-    };
-
     let nn = (&n * &n).complete();
     let z_nn = AdditiveGroup::new(&nn);
 
-    // g is an element of Z^*_n^2
-    // such that gcd(g, n^2) = 1
-    // let g = loop {
-    //   let g = Self::gen_random_number();
-    //   if &g.clone().gcd(&nn) == Integer::ONE {
-    //     break g;
-    //   }
-    // };
-    let g = loop {
-      let k = Self::gen_random_number() % &n;
-      let g = ((k * &n) + Integer::ONE) % &nn;
-      if &g.clone().gcd(&nn) == Integer::ONE {
-        break g;
-      }
+    let g = match g_calc {
+      GCalculation::Random => {
+        // g is an element of Z^*_n^2
+        // such that gcd(g, n^2) = 1
+        loop {
+          let g = Self::gen_random_number();
+          if &g.clone().gcd(&nn) == Integer::ONE {
+            break g;
+          }
+        }
+      },
+      GCalculation::KnPlusOne => {
+        loop {
+          // // k is coprime to n
+          // let k = loop {
+          //   let k = Self::gen_random_number();
+          //   if &k.clone().gcd(&n) == Integer::ONE {
+          //     break k;
+          //   }
+          // };
+          let k = Self::gen_random_number() % &n;
+          let g = ((k * &n) + Integer::ONE) % &nn;
+          if &g.clone().gcd(&nn) == Integer::ONE {
+            break g;
+          }
+        }
+      },
     };
 
     let pk = PublicKey { n: n.clone(), g };
@@ -109,15 +118,14 @@ impl Paillier {
 
   // returns an element in Z_n^2
   pub fn encrypt(&self, pk: &PublicKey, m: &Element) -> Element {
-    // m must be an element of Z_n
-    assert_eq!(m.order_ref(), self.z_n.order_ref());
+    // TODO m = m mod n; m in Z_n
 
     let nn = &self.z_nn.order_ref();
 
     // Z_{n^2} is multiplicative group of integers modulo n^2 (Z/n^2Z)
     // select r randomly from Z_{n^2}
     let r = loop {
-      let r = Self::gen_random_number();  // TODO move this Group code
+      let r = Self::gen_random_number();
       if &r.clone().gcd(nn) == Integer::ONE {
         break self.z_nn.element(&r);
       }
@@ -173,7 +181,7 @@ mod tests {
     let mut rng = thread_rng();
 
     for _ in 0..100 {
-      let pal = Paillier::new(64);
+      let pal = Paillier::new(64, GCalculation::Random);
       let m = pal.z_n.element(&Integer::from(rng.gen::<u128>()));
 
       let c = pal.encrypt(&pal.pk, &m);
