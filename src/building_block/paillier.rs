@@ -19,7 +19,6 @@ pub struct Paillier {
   n: Integer,
   nn: Integer,
   pub z_n: AdditiveGroup,
-  pub z_nn: AdditiveGroup,
   pub pk: PublicKey,
   pub sk: SecretKey,
 }
@@ -40,12 +39,15 @@ impl Paillier {
     Integer::from(rng.gen::<u128>())
   }
 
-  pub fn gen_random_prime(num_bits: u32, rng: &mut dyn MutRandState) -> Integer {
+  pub fn gen_random_prime(
+    num_bits: u32,
+    rng: &mut dyn MutRandState,
+  ) -> Integer {
     let mut n = Integer::from(Integer::random_bits(num_bits, rng));
 
     let num_ite = 25;
     while n.is_probably_prime(num_ite) != IsPrime::Yes {
-        n.assign(Integer::random_bits(num_bits, rng));
+      n.assign(Integer::random_bits(num_bits, rng));
     }
     n
   }
@@ -72,7 +74,6 @@ impl Paillier {
     let z_n = AdditiveGroup::new(&n);
  
     let nn = (&n * &n).complete();
-    let z_nn = AdditiveGroup::new(&nn);
 
     let g = match g_calc {
       GCalculation::Random => {
@@ -110,42 +111,40 @@ impl Paillier {
       n,
       nn,
       z_n,
-      z_nn,
       pk,
       sk,
     }
   }
 
-  // returns an element in Z_n^2
-  pub fn encrypt(&self, pk: &PublicKey, m: &Element) -> Element {
+  pub fn encrypt(&self, pk: &PublicKey, m: &Element) -> Integer {
     // TODO m = m mod n; m in Z_n
 
-    let nn = &self.z_nn.order_ref();
+    let nn = &self.nn;
 
     // Z_{n^2} is multiplicative group of integers modulo n^2 (Z/n^2Z)
     // select r randomly from Z_{n^2}
     let r = loop {
-      let r = Self::gen_random_number();
+      let r = Self::gen_random_number() % nn;
       if &r.clone().gcd(nn) == Integer::ONE {
-        break self.z_nn.element(&r);
+        break r;
       }
     };
 
     let gm = pk.g.clone().pow_mod(m.value_ref(), nn).unwrap();
-    let rn = r.value().clone().pow_mod(&pk.n, nn).unwrap();
+    let rn = r.pow_mod(&pk.n, nn).unwrap();
 
-    let c = gm * rn;
-    self.z_nn.element(&c)
+    (gm * rn) % nn
   }
 
-  fn L(&self, u: &Element) -> Integer {
-    let u_minus_1 = (u.value_ref() - Integer::ONE).complete();
+  // mod nn -> mod n
+  fn L(&self, u: &Integer) -> Integer {
+    let u_minus_1 = (u - 1u8).complete();
     u_minus_1 / &self.n
   }
 
   pub fn decrypt(
     &self,
-    c: &Element,
+    c: &Integer,
     sk: &SecretKey,
     pk: &PublicKey,
   ) -> Element {
@@ -155,8 +154,8 @@ impl Paillier {
 
     let nn = &self.nn;
 
-    let lhs = self.z_nn.element(&(c.value().clone().pow_mod(&lambda, nn).unwrap()));
-    let rhs = self.z_nn.element(&(pk.g.clone().pow_mod(&lambda, nn).unwrap()));
+    let lhs = c.clone().pow_mod(&lambda, nn).unwrap();
+    let rhs = pk.g.clone().pow_mod(&lambda, nn).unwrap();
 
     let lhs = self.L(&lhs);
 
