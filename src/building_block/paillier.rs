@@ -5,10 +5,6 @@ use rand::Rng;
 use rug::{Assign, Complete, Integer};
 use rug::integer::IsPrime;
 use rug::rand::{MutRandState, RandState};
-use crate::building_block::additive_group::{
-  AdditiveGroup,
-  Element,
-};
 
 pub enum GCalculation {
   Random,
@@ -18,7 +14,6 @@ pub enum GCalculation {
 pub struct Paillier {
   n: Integer,
   nn: Integer,
-  pub z_n: AdditiveGroup,
   pub pk: PublicKey,
   pub sk: SecretKey,
 }
@@ -71,8 +66,6 @@ impl Paillier {
     };
 
     let n = Integer::from(&p * &q);
-    let z_n = AdditiveGroup::new(&n);
- 
     let nn = (&n * &n).complete();
 
     let g = match g_calc {
@@ -110,14 +103,15 @@ impl Paillier {
     Paillier {
       n,
       nn,
-      z_n,
       pk,
       sk,
     }
   }
 
-  pub fn encrypt(&self, pk: &PublicKey, m: &Element) -> Integer {
-    // TODO m = m mod n; m in Z_n
+  pub fn encrypt(&self, pk: &PublicKey, m: &Integer) -> Integer {
+    if m < &Integer::ZERO || m >= &self.n {
+      panic!("m must be non-negative and less than n ({})", self.n);
+    }
 
     let nn = &self.nn;
 
@@ -130,7 +124,7 @@ impl Paillier {
       }
     };
 
-    let gm = pk.g.clone().pow_mod(m.value_ref(), nn).unwrap();
+    let gm = pk.g.clone().pow_mod(m, nn).unwrap();
     let rn = r.pow_mod(&pk.n, nn).unwrap();
 
     (gm * rn) % nn
@@ -147,7 +141,7 @@ impl Paillier {
     c: &Integer,
     sk: &SecretKey,
     pk: &PublicKey,
-  ) -> Element {
+  ) -> Integer {
     let p_minus_1 = (&sk.p - 1u8).complete();
     let q_minus_1 = (&sk.q - 1u8).complete();
     let lambda = p_minus_1.lcm(&q_minus_1);
@@ -157,9 +151,7 @@ impl Paillier {
     let num = c.clone().pow_mod(&lambda, nn).unwrap();
     let deno = pk.g.clone().pow_mod(&lambda, nn).unwrap();
 
-    let m = self.L(&num) * self.L(&deno).invert(&self.n).unwrap();
-
-    self.z_n.element(&m)
+    self.L(&num) * self.L(&deno).invert(&self.n).unwrap() % &self.n
   }
 }
 
@@ -176,11 +168,11 @@ mod tests {
 
     for _ in 0..100 {
       let pal = Paillier::new(64, GCalculation::Random);
-      let m = pal.z_n.element(&Integer::from(rng.gen::<u128>()));
+      let m = Integer::from(rng.gen::<u128>()) % &pal.n;
 
       let c = pal.encrypt(&pal.pk, &m);
-      let m_rec = pal.decrypt(&c, &pal.sk, &pal.pk);
-      assert_eq!(m.value(), m_rec.value());
+      let m_prime = pal.decrypt(&c, &pal.sk, &pal.pk);
+      assert_eq!(m, m_prime);
       print!(".");
       io::stdout().flush().unwrap();
     }
