@@ -4,6 +4,7 @@
 use rand::Rng;
 use rug::{Assign, Complete, Integer};
 use rug::integer::IsPrime;
+use rug::rand::{MutRandState, RandState};
 use crate::building_block::additive_group::{
   AdditiveGroup,
   Element,
@@ -34,37 +35,64 @@ impl Paillier {
     Integer::from(rng.gen::<u128>())
   }
 
-  pub fn gen_random_prime(num_bits: u32) -> Integer {
-    let mut rng = rug::rand::RandState::new();
-    let mut n = Integer::from(Integer::random_bits(num_bits, &mut rng));
+  pub fn gen_random_prime(num_bits: u32, rng: &mut dyn MutRandState) -> Integer {
+    let mut n = Integer::from(Integer::random_bits(num_bits, rng));
 
     let num_ite = 25;
     while n.is_probably_prime(num_ite) != IsPrime::Yes {
-        n.assign(Integer::random_bits(num_bits, &mut rng));
+        n.assign(Integer::random_bits(num_bits, rng));
     }
     n
   }
 
   pub fn new(num_bits: u32) -> Paillier {
-    let p = Integer::from(233u8); // Self::gen_random_prime(num_bits);
-    let q = Integer::from(211u8); //Self::gen_random_prime(num_bits);
+    let mut rng = RandState::new();
+    let seed = {
+      use rand::thread_rng;
+      let mut rng = thread_rng();
+      Integer::from(rng.gen::<u128>())
+    };
+    rng.seed(&seed);
+
+    // generate distinct primes p and q
+    let p = Self::gen_random_prime(num_bits, &mut rng);
+    let q = loop {
+      let q = Self::gen_random_prime(num_bits, &mut rng);
+      if &p != &q {
+        break q;
+      }
+    };
+
     let n = Integer::from(&p * &q);
-    println!("p: {:?}, q: {:?}, n: {:?}", p, q, n);
 
     let z_n = AdditiveGroup::new(&n);
-    let k = z_n.get_random_element();
+ 
+    // k is coprime to n
+    let k = loop {
+      let k = Self::gen_random_number();
+      if &k.clone().gcd(&n) == Integer::ONE {
+        break k;
+      }
+    };
 
-    // 2417000569
     let nn = (&n * &n).complete();
-    println!("nn: {:?}", nn);
     let z_nn = AdditiveGroup::new(&nn);
 
-    // let g = {
-    //   let kn = (k.value_ref() * &n).complete();
-    //   let one_plus_kn = (Integer::ONE + &kn).complete();
-    //   (&one_plus_kn % &nn).complete()
+    // g is an element of Z^*_n^2
+    // such that gcd(g, n^2) = 1
+    // let g = loop {
+    //   let g = Self::gen_random_number();
+    //   if &g.clone().gcd(&nn) == Integer::ONE {
+    //     break g;
+    //   }
     // };
-    let g = Integer::from(524360);
+    let g = loop {
+      let k = Self::gen_random_number() % &n;
+      let g = ((k * &n) + Integer::ONE) % &nn;
+      if &g.clone().gcd(&nn) == Integer::ONE {
+        break g;
+      }
+    };
 
     let pk = PublicKey { n: n.clone(), g };
     let sk = SecretKey { p, q };
@@ -84,19 +112,20 @@ impl Paillier {
     // m must be an element of Z_n
     assert_eq!(m.order_ref(), self.z_n.order_ref());
 
-    // select r randomly from Z_n^2
-    let r = self.z_nn.element(&Integer::from(10418));
-    println!("r: {:?}", r.value());
+    let nn = &self.z_nn.order_ref();
 
-    let nn = self.z_nn.order_ref();
+    // Z_{n^2} is multiplicative group of integers modulo n^2 (Z/n^2Z)
+    // select r randomly from Z_{n^2}
+    let r = loop {
+      let r = Self::gen_random_number();  // TODO move this Group code
+      if &r.clone().gcd(nn) == Integer::ONE {
+        break self.z_nn.element(&r);
+      }
+    };
+
     let gm = pk.g.clone().pow_mod(m.value_ref(), nn).unwrap();
-    println!("g^m: {:?}", gm);
-
-    // 857909725
     let rn = r.value().clone().pow_mod(&pk.n, nn).unwrap();
-    println!("r^n: {:?}", rn);
 
-    // 1233063404
     let c = gm * rn;
     self.z_nn.element(&c)
   }
@@ -115,19 +144,15 @@ impl Paillier {
     let p_minus_1 = (&sk.p - 1u8).complete();
     let q_minus_1 = (&sk.q - 1u8).complete();
     let lambda = p_minus_1.lcm(&q_minus_1);
-    println!("lambda: {:?}", lambda);
 
     let nn = &self.nn;
 
     let lhs = self.z_nn.element(&(c.value().clone().pow_mod(&lambda, nn).unwrap()));
     let rhs = self.z_nn.element(&(pk.g.clone().pow_mod(&lambda, nn).unwrap()));
 
-    // 19022
     let lhs = self.L(&lhs);
-    println!("lhs: {:?}", lhs);
 
     let rhs = self.L(&rhs);
-    println!("rhs: {:?}", rhs);
 
     let rhs_inv = rhs.invert(&self.n).unwrap();
 
@@ -141,18 +166,22 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test() {
-    let pal = Paillier::new(8);
-    let m = pal.z_n.element(&Integer::from(23u8));
-    println!("m: {:?}", m.value());
+  fn test_pallier() {
+    use rand::thread_rng;
+    use std::io::{self, Write};
 
-    let c = pal.encrypt(&pal.pk, &m);
-    println!("c: {:?}", c.value());
+    let mut rng = thread_rng();
 
-    let m_rec = pal.decrypt(&c, &pal.sk, &pal.pk);
-    println!("m (recovered): {:?}", m_rec.value());
+    for _ in 0..100 {
+      let pal = Paillier::new(64);
+      let m = pal.z_n.element(&Integer::from(rng.gen::<u128>()));
 
-    assert_eq!(m.value(), m_rec.value());
+      let c = pal.encrypt(&pal.pk, &m);
+      let m_rec = pal.decrypt(&c, &pal.sk, &pal.pk);
+      assert_eq!(m.value(), m_rec.value());
+      print!(".");
+      io::stdout().flush().unwrap();
+    }
   } 
 }
 
