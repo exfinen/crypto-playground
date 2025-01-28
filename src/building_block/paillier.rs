@@ -154,16 +154,11 @@ impl Paillier {
 
     let nn = &self.nn;
 
-    let lhs = c.clone().pow_mod(&lambda, nn).unwrap();
-    let rhs = pk.g.clone().pow_mod(&lambda, nn).unwrap();
+    let num = c.clone().pow_mod(&lambda, nn).unwrap();
+    let deno = pk.g.clone().pow_mod(&lambda, nn).unwrap();
 
-    let lhs = self.L(&lhs);
+    let m = self.L(&num) * self.L(&deno).invert(&self.n).unwrap();
 
-    let rhs = self.L(&rhs);
-
-    let rhs_inv = rhs.invert(&self.n).unwrap();
-
-    let m = lhs * rhs_inv;
     self.z_n.element(&m)
   }
 }
