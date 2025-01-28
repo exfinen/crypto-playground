@@ -14,6 +14,7 @@ pub enum GCalculation {
 pub struct Paillier {
   n: Integer,
   nn: Integer,
+  lambda: Integer,
   pub pk: PublicKey,
   pub sk: SecretKey,
 }
@@ -68,6 +69,10 @@ impl Paillier {
     let n = Integer::from(&p * &q);
     let nn = (&n * &n).complete();
 
+    let p_minus_1 = (&p - 1u8).complete();
+    let q_minus_1 = (&q - 1u8).complete();
+    let lambda = p_minus_1.lcm(&q_minus_1);
+
     let g = match g_calc {
       GCalculation::Random => {
         // g is an element of Z^*_n^2
@@ -103,6 +108,7 @@ impl Paillier {
     Paillier {
       n,
       nn,
+      lambda,
       pk,
       sk,
     }
@@ -139,17 +145,12 @@ impl Paillier {
   pub fn decrypt(
     &self,
     c: &Integer,
-    sk: &SecretKey,
     pk: &PublicKey,
   ) -> Integer {
-    let p_minus_1 = (&sk.p - 1u8).complete();
-    let q_minus_1 = (&sk.q - 1u8).complete();
-    let lambda = p_minus_1.lcm(&q_minus_1);
-
     let nn = &self.nn;
 
-    let num = c.clone().pow_mod(&lambda, nn).unwrap();
-    let deno = pk.g.clone().pow_mod(&lambda, nn).unwrap();
+    let num = c.clone().pow_mod(&self.lambda, nn).unwrap();
+    let deno = pk.g.clone().pow_mod(&self.lambda, nn).unwrap();
 
     self.L(&num) * self.L(&deno).invert(&self.n).unwrap() % &self.n
   }
@@ -171,7 +172,7 @@ mod tests {
       let m = Integer::from(rng.gen::<u128>()) % &pal.n;
 
       let c = pal.encrypt(&pal.pk, &m);
-      let m_prime = pal.decrypt(&c, &pal.sk, &pal.pk);
+      let m_prime = pal.decrypt(&c, &pal.pk);
       assert_eq!(m, m_prime);
       print!(".");
       io::stdout().flush().unwrap();
