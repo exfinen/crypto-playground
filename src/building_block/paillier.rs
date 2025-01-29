@@ -56,7 +56,7 @@ impl Paillier {
   }
 
   fn calc_g(
-    calc_method: GCalcMethod,
+    calc_method: &GCalcMethod,
     n: &Integer,
     nn: &Integer,
   ) -> Integer {
@@ -73,14 +73,13 @@ impl Paillier {
       },
       GCalcMethod::KnPlusOne => {
         loop {
-          // // k is coprime to n
-          // let k = loop {
-          //   let k = Self::gen_random_number();
-          //   if &k.clone().gcd(&n) == Integer::ONE {
-          //     break k;
-          //   }
-          // };
-          let k = Self::gen_random_number() % n;
+          // find k that is coprime to n
+          let k = loop {
+            let k = Self::gen_random_number();
+            if &k.clone().gcd(&n) == Integer::ONE {
+              break k;
+            }
+          };
           let g = ((k * n) + Integer::ONE) % nn;
           if &g.clone().gcd(&nn) == Integer::ONE {
             break g;
@@ -115,9 +114,18 @@ impl Paillier {
     let q_minus_1 = (&q - 1u8).complete();
     let lambda = p_minus_1.lcm(&q_minus_1);
 
-    let g = Self::calc_g(g_calc_method, &n, &nn);
-    let mu = g.clone().pow_mod(&lambda, &nn).unwrap();
-    let mu = Self::L(&mu, &n).invert(&n).unwrap();
+    let (g, mu) = {
+      loop {
+        let g = Self::calc_g(&g_calc_method, &n, &nn);
+        let g_lambda = g.clone().pow_mod(&lambda, &nn).unwrap();
+        let k = Self::L(&g_lambda, &n);
+        // k needs be a coprime to g to have an inverse
+        if &g.clone().gcd(&k) == Integer::ONE {
+          let mu = k.invert(&n).unwrap();
+          break (g, mu);
+        }
+      }
+    };
 
     let pk = PublicKey { n: n.clone(), g };
     let sk = SecretKey { p, q };
