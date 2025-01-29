@@ -15,6 +15,7 @@ pub struct Paillier {
   n: Integer,
   nn: Integer,
   lambda: Integer,
+  mu: Integer,
   pub pk: PublicKey,
   pub sk: SecretKey,
 }
@@ -107,6 +108,7 @@ impl Paillier {
         }
       },
     };
+    let mu = g.clone().pow_mod(&lambda, &nn).unwrap();
 
     let pk = PublicKey { n: n.clone(), g };
     let sk = SecretKey { p, q };
@@ -115,6 +117,7 @@ impl Paillier {
       n,
       nn,
       lambda,
+      mu,
       pk,
       sk,
     }
@@ -151,9 +154,8 @@ impl Paillier {
     let nn = &self.nn;
 
     let num = c.clone().pow_mod(&self.lambda, nn).unwrap();
-    let deno = pk.g.clone().pow_mod(&self.lambda, nn).unwrap();
 
-    Self::L(&num, n) * Self::L(&deno, n).invert(&self.n).unwrap() % &self.n
+    Self::L(&num, n) * Self::L(&self.mu, n).invert(&self.n).unwrap() % &self.n
   }
 }
 
