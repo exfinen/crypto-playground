@@ -6,7 +6,7 @@ use rug::{Assign, Complete, Integer};
 use rug::integer::IsPrime;
 use rug::rand::{MutRandState, RandState};
 
-pub enum GCalculation {
+pub enum GCalcMethod {
   Random,
   KnPlusOne,
 }
@@ -55,7 +55,42 @@ impl Paillier {
     u_minus_1 / n
   }
 
-  pub fn new(num_bits: u32, g_calc: GCalculation) -> Paillier {
+  fn calc_g(
+    calc_method: GCalcMethod,
+    n: &Integer,
+    nn: &Integer,
+  ) -> Integer {
+    match calc_method {
+      GCalcMethod::Random => {
+        // g is an element of Z^*_n^2
+        // such that gcd(g, n^2) = 1
+        loop {
+          let g = Self::gen_random_number();
+          if &g.clone().gcd(&nn) == Integer::ONE {
+            break g;
+          }
+        }
+      },
+      GCalcMethod::KnPlusOne => {
+        loop {
+          // // k is coprime to n
+          // let k = loop {
+          //   let k = Self::gen_random_number();
+          //   if &k.clone().gcd(&n) == Integer::ONE {
+          //     break k;
+          //   }
+          // };
+          let k = Self::gen_random_number() % n;
+          let g = ((k * n) + Integer::ONE) % nn;
+          if &g.clone().gcd(&nn) == Integer::ONE {
+            break g;
+          }
+        }
+      },
+    }
+  }
+
+  pub fn new(num_bits: u32, g_calc_method: GCalcMethod) -> Paillier {
     let mut rng = RandState::new();
     let seed = {
       use rand::thread_rng;
@@ -80,36 +115,9 @@ impl Paillier {
     let q_minus_1 = (&q - 1u8).complete();
     let lambda = p_minus_1.lcm(&q_minus_1);
 
-    let g = match g_calc {
-      GCalculation::Random => {
-        // g is an element of Z^*_n^2
-        // such that gcd(g, n^2) = 1
-        loop {
-          let g = Self::gen_random_number();
-          if &g.clone().gcd(&nn) == Integer::ONE {
-            break g;
-          }
-        }
-      },
-      GCalculation::KnPlusOne => {
-        loop {
-          // // k is coprime to n
-          // let k = loop {
-          //   let k = Self::gen_random_number();
-          //   if &k.clone().gcd(&n) == Integer::ONE {
-          //     break k;
-          //   }
-          // };
-          let k = Self::gen_random_number() % &n;
-          let g = ((k * &n) + Integer::ONE) % &nn;
-          if &g.clone().gcd(&nn) == Integer::ONE {
-            break g;
-          }
-        }
-      },
-    };
+    let g = Self::calc_g(g_calc_method, &n, &nn);
     let mu = g.clone().pow_mod(&lambda, &nn).unwrap();
-    let mu = Self::L(&mu, &n);
+    let mu = Self::L(&mu, &n).invert(&n).unwrap();
 
     let pk = PublicKey { n: n.clone(), g };
     let sk = SecretKey { p, q };
@@ -156,7 +164,7 @@ impl Paillier {
 
     let num = c.clone().pow_mod(&self.lambda, nn).unwrap();
 
-    Self::L(&num, n) * &self.mu.clone().invert(&self.n).unwrap() % &self.n
+    Self::L(&num, n) * &self.mu % &self.n
   }
 }
 
@@ -172,7 +180,7 @@ mod tests {
     let mut rng = thread_rng();
 
     for _ in 0..100 {
-      let pal = Paillier::new(64, GCalculation::Random);
+      let pal = Paillier::new(64, GCalcMethod::Random);
       let m = Integer::from(rng.gen::<u128>()) % &pal.n;
 
       let c = pal.encrypt(&pal.pk, &m);
