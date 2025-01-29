@@ -140,7 +140,7 @@ impl Paillier {
     }
   }
 
-  pub fn encrypt(&self, pk: &PublicKey, m: &Integer) -> Integer {
+  pub fn encrypt(&self, m: &Integer) -> Integer {
     if m < &Integer::ZERO || m >= &self.n {
       panic!("m must be non-negative and less than n ({})", self.n);
     }
@@ -156,6 +156,7 @@ impl Paillier {
       }
     };
 
+    let pk = &self.pk;
     let gm = pk.g.clone().pow_mod(m, nn).unwrap();
     let rn = r.pow_mod(&pk.n, nn).unwrap();
 
@@ -165,7 +166,6 @@ impl Paillier {
   pub fn decrypt(
     &self,
     c: &Integer,
-    pk: &PublicKey,
   ) -> Integer {
     let n = &self.n;
     let nn = &self.nn;
@@ -188,11 +188,11 @@ mod tests {
     let mut rng = thread_rng();
 
     for _ in 0..100 {
-      let pal = Paillier::new(64, GCalcMethod::Random);
-      let m = Integer::from(rng.gen::<u128>()) % &pal.n;
+      let pail = Paillier::new(64, GCalcMethod::Random);
+      let m = Integer::from(rng.gen::<u128>()) % &pail.n;
 
-      let c = pal.encrypt(&pal.pk, &m);
-      let m_prime = pal.decrypt(&c, &pal.pk);
+      let c = pail.encrypt(&m);
+      let m_prime = pail.decrypt(&c);
       assert_eq!(m, m_prime);
       print!(".");
       io::stdout().flush().unwrap();
