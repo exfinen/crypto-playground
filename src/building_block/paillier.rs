@@ -109,6 +109,7 @@ impl Paillier {
       },
     };
     let mu = g.clone().pow_mod(&lambda, &nn).unwrap();
+    let mu = Self::L(&mu, &n);
 
     let pk = PublicKey { n: n.clone(), g };
     let sk = SecretKey { p, q };
@@ -155,7 +156,7 @@ impl Paillier {
 
     let num = c.clone().pow_mod(&self.lambda, nn).unwrap();
 
-    Self::L(&num, n) * Self::L(&self.mu, n).invert(&self.n).unwrap() % &self.n
+    Self::L(&num, n) * &self.mu.clone().invert(&self.n).unwrap() % &self.n
   }
 }
 
@@ -164,7 +165,7 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_pallier() {
+  fn test_paillier() {
     use rand::thread_rng;
     use std::io::{self, Write};
 
