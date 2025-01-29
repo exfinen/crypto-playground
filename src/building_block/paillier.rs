@@ -194,6 +194,7 @@ mod tests {
       let c = pail.encrypt(&m);
       let m_prime = pail.decrypt(&c);
       assert_eq!(m, m_prime);
+
       print!(".");
       io::stdout().flush().unwrap();
     }
