@@ -48,6 +48,12 @@ impl Paillier {
     n
   }
 
+  // mod nn -> mod n
+  fn L(u: &Integer, n: &Integer) -> Integer {
+    let u_minus_1 = (u - 1u8).complete();
+    u_minus_1 / n
+  }
+
   pub fn new(num_bits: u32, g_calc: GCalculation) -> Paillier {
     let mut rng = RandState::new();
     let seed = {
@@ -136,23 +142,18 @@ impl Paillier {
     (gm * rn) % nn
   }
 
-  // mod nn -> mod n
-  fn L(&self, u: &Integer) -> Integer {
-    let u_minus_1 = (u - 1u8).complete();
-    u_minus_1 / &self.n
-  }
-
   pub fn decrypt(
     &self,
     c: &Integer,
     pk: &PublicKey,
   ) -> Integer {
+    let n = &self.n;
     let nn = &self.nn;
 
     let num = c.clone().pow_mod(&self.lambda, nn).unwrap();
     let deno = pk.g.clone().pow_mod(&self.lambda, nn).unwrap();
 
-    self.L(&num) * self.L(&deno).invert(&self.n).unwrap() % &self.n
+    Self::L(&num, n) * Self::L(&deno, n).invert(&self.n).unwrap() % &self.n
   }
 }
 
