@@ -14,8 +14,8 @@ pub enum GCalcMethod {
 pub struct Paillier();
 
 pub struct PublicKey {
-  n: Integer,
-  g: Integer,
+  pub n: Integer,
+  pub g: Integer,
 }
 
 pub struct SecretKey {
@@ -127,9 +127,10 @@ impl Paillier {
     (pk, sk)
   }
 
+  // encrypted message is in multiplicative group modulo n^2
   pub fn encrypt(m: &Integer, pk: &PublicKey) -> Integer {
     if m < &Integer::ZERO || m >= &pk.n {
-      panic!("m must be non-negative and less than n ({})", pk.n);
+      panic!("m should be in additive group module n");
     }
 
     let nn = &(&pk.n * &pk.n).complete();
@@ -149,6 +150,7 @@ impl Paillier {
     (gm * rn) % nn
   }
 
+  // decrypted message is in additive group modulo n
   pub fn decrypt(
     c: &Integer,
     sk: &SecretKey,
@@ -161,6 +163,44 @@ impl Paillier {
 
     Self::L(&num, n) * &sk.mu % &pk.n
   }
+
+  pub fn add(
+    c1: &Integer,
+    c2: &Integer,
+    pk: &PublicKey,
+  ) -> Integer {
+    let nn = (&pk.n * &pk.n).complete();
+    let sum = (c1 + c2).complete();
+    sum % &nn
+  }
+
+  pub fn scalar_mul(
+    c: &Integer,
+    m: &Integer, // multiplier
+    pk: &PublicKey,
+  ) -> Integer {
+    let nn = &(&pk.n * &pk.n).complete();
+
+    let mut res = Integer::ZERO;
+    let mut m = m.clone();
+    let mut bit_amount = c.clone();
+
+    while &m != &Integer::ZERO {
+      // if the least significant bit is 1
+      let lsb = (&m & Integer::ONE).complete();
+      if &lsb == Integer::ONE {
+        // add the amount for the current bit to res
+        res += &bit_amount;
+        if &res > nn {
+          res = res % nn;
+        }
+      }
+      // update bit_amount to represent the next bit 
+      bit_amount = (&bit_amount + &bit_amount).complete();
+      m = m >> &1u32; // shift to the right to test the next bit
+    }
+    res
+  }
 }
 
 #[cfg(test)]
@@ -168,7 +208,29 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_paillier() {
+  fn test_add() {
+    let pk = PublicKey {
+      n: Integer::from(8),
+      g: Integer::ONE.clone(),
+    };
+    let res = Paillier::add(&Integer::from(44), &Integer::from(55), &pk);
+    // 99 mod 64 = 35
+    assert_eq!(res, Integer::from(35));
+  }
+
+  #[test]
+  fn test_scalar_mul() {
+    let pk = PublicKey {
+      n: Integer::from(8),
+      g: Integer::ONE.clone(),
+    };
+    let res = Paillier::scalar_mul(&Integer::from(11), &Integer::from(9), &pk);
+    // 99 mod 64 = 35
+    assert_eq!(res, Integer::from(35));
+  }
+
+  #[test]
+  fn test_enc_dec() {
     use rand::thread_rng;
     use std::io::{self, Write};
 
