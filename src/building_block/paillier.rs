@@ -11,14 +11,7 @@ pub enum GCalcMethod {
   KnPlusOne,
 }
 
-pub struct Paillier {
-  n: Integer,
-  nn: Integer,
-  lambda: Integer,
-  mu: Integer,
-  pub pk: PublicKey,
-  pub sk: SecretKey,
-}
+pub struct Paillier();
 
 pub struct PublicKey {
   n: Integer,
@@ -26,8 +19,10 @@ pub struct PublicKey {
 }
 
 pub struct SecretKey {
-  p: Integer,
-  q: Integer,
+  // p: Integer,
+  // q: Integer,
+  lambda: Integer,
+  mu: Integer,
 }
 
 impl Paillier {
@@ -89,7 +84,7 @@ impl Paillier {
     }
   }
 
-  pub fn new(num_bits: u32, g_calc_method: GCalcMethod) -> Paillier {
+  pub fn new(num_bits: u32, g_calc_method: GCalcMethod) -> (PublicKey, SecretKey) {
     let mut rng = RandState::new();
     let seed = {
       use rand::thread_rng;
@@ -128,24 +123,16 @@ impl Paillier {
     };
 
     let pk = PublicKey { n: n.clone(), g };
-    let sk = SecretKey { p, q };
-
-    Paillier {
-      n,
-      nn,
-      lambda,
-      mu,
-      pk,
-      sk,
-    }
+    let sk = SecretKey { lambda, mu };
+    (pk, sk)
   }
 
-  pub fn encrypt(&self, m: &Integer) -> Integer {
-    if m < &Integer::ZERO || m >= &self.n {
-      panic!("m must be non-negative and less than n ({})", self.n);
+  pub fn encrypt(m: &Integer, pk: &PublicKey) -> Integer {
+    if m < &Integer::ZERO || m >= &pk.n {
+      panic!("m must be non-negative and less than n ({})", pk.n);
     }
 
-    let nn = &self.nn;
+    let nn = &(&pk.n * &pk.n).complete();
 
     // Z_{n^2} is multiplicative group of integers modulo n^2 (Z/n^2Z)
     // select r randomly from Z_{n^2}
@@ -156,7 +143,6 @@ impl Paillier {
       }
     };
 
-    let pk = &self.pk;
     let gm = pk.g.clone().pow_mod(m, nn).unwrap();
     let rn = r.pow_mod(&pk.n, nn).unwrap();
 
@@ -164,15 +150,16 @@ impl Paillier {
   }
 
   pub fn decrypt(
-    &self,
     c: &Integer,
+    sk: &SecretKey,
+    pk: &PublicKey,
   ) -> Integer {
-    let n = &self.n;
-    let nn = &self.nn;
+    let n = &pk.n;
+    let nn = &(n * n).complete();
 
-    let num = c.clone().pow_mod(&self.lambda, nn).unwrap();
+    let num = c.clone().pow_mod(&sk.lambda, nn).unwrap();
 
-    Self::L(&num, n) * &self.mu % &self.n
+    Self::L(&num, n) * &sk.mu % &pk.n
   }
 }
 
@@ -188,11 +175,11 @@ mod tests {
     let mut rng = thread_rng();
 
     for _ in 0..100 {
-      let pail = Paillier::new(64, GCalcMethod::Random);
-      let m = Integer::from(rng.gen::<u128>()) % &pail.n;
+      let (pk, sk) = Paillier::new(64, GCalcMethod::Random);
+      let m = Integer::from(rng.gen::<u128>()) % &pk.n;
 
-      let c = pail.encrypt(&m);
-      let m_prime = pail.decrypt(&c);
+      let c = Paillier::encrypt(&m, &pk);
+      let m_prime = Paillier::decrypt(&c, &sk, &pk);
       assert_eq!(m, m_prime);
 
       print!(".");
