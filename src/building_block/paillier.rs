@@ -120,7 +120,7 @@ impl Paillier {
   pub fn encrypt(
     num_bits: u32,
     rng: &mut dyn MutRandState,
-    m: &Integer,
+    m: &Integer, // plaintext
     pk: &PublicKey,
   ) -> Integer {
     if m < &Integer::ZERO || m >= &pk.n {
@@ -146,7 +146,7 @@ impl Paillier {
 
   // decrypted message is in additive group modulo n
   pub fn decrypt(
-    c: &Integer,
+    c: &Integer, // cyphertext
     sk: &SecretKey,
     pk: &PublicKey,
   ) -> Integer {
