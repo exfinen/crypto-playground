@@ -9,7 +9,7 @@ pub mod gate_type;
 pub mod ot;
 pub mod output_decoding_table;
 pub mod paillier;
-//pub mod pedersen;
+pub mod pedersen;
 pub mod wire;
 pub mod wires;
 pub mod wire_assignment;

@@ -1,12 +1,13 @@
 use rand::{
   rngs::OsRng,
   RngCore,
+  Rng,
 };
 use rug::{
   Assign,
   Integer,
   integer::IsPrime,
-  rand::MutRandState,
+  rand::{MutRandState, RandState},
 };
 
 pub fn gen_random_binary_val() -> bool {
@@ -39,6 +40,17 @@ pub fn xor_vecs(v1: &Vec<u8>, v2: &Vec<u8>) -> Vec<u8> {
     .zip(v2.iter())
     .map(|(a, b)| a ^ b)
     .collect()
+}
+
+pub fn get_rng() -> Box<dyn MutRandState> {
+  let mut rng = RandState::new();
+  let seed = {
+    use rand::thread_rng;
+    let mut rng = thread_rng();
+    Integer::from(rng.gen::<u128>())
+  };
+  rng.seed(&seed);
+  Box::new(rng)
 }
 
 pub fn gen_random_number(

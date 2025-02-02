@@ -1,15 +1,15 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
-use rand::Rng;
 use rug::{
   Complete,
   Integer,
-  rand::{MutRandState, RandState},
+  rand::MutRandState,
 };
 use crate::building_block::util::{
   gen_random_number,
   gen_random_prime,
+  get_rng,
 };
 
 pub enum GCalcMethod {
@@ -74,19 +74,8 @@ impl Paillier {
     }
   }
 
-  pub fn get_rng() -> Box<dyn MutRandState> {
-    let mut rng = RandState::new();
-    let seed = {
-      use rand::thread_rng;
-      let mut rng = thread_rng();
-      Integer::from(rng.gen::<u128>())
-    };
-    rng.seed(&seed);
-    Box::new(rng)
-  }
-
   pub fn new(num_bits: u32, g_calc_method: GCalcMethod) -> (PublicKey, SecretKey) {
-    let mut rng = Self::get_rng();
+    let mut rng = get_rng();
 
     // generate distinct primes p and q
     let p = gen_random_prime(num_bits, &mut *rng);
@@ -235,7 +224,7 @@ mod tests {
   fn test_enc_dec() {
     use std::io::{self, Write};
 
-    let mut rng = Paillier::get_rng();
+    let mut rng = get_rng();
     let num_bits = 64;
 
     for _ in 0..10 {

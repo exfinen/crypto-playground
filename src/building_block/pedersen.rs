@@ -1,19 +1,26 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
-use rand::Rng;
-use rug::{Complete, Integer};
+use rug::{
+  Complete,
+  Integer,
+  integer::IsPrime,
+};
+use crate::building_block::util::{
+  gen_random_number,
+  get_rng,
+};
 
 pub struct PedersenCommitment {
   group_order: Integer,
-  g: Element,
-  h: Element,
+  g: Integer,
+  h: Integer,
 }
 
 impl PedersenCommitment {
   pub fn new(
     group_order: &Integer,
-    generator: &Integer,
+    g: &Integer, // generator
   ) -> Self {
     let num_ite = 25;
     if group_order.is_probably_prime(num_ite) != IsPrime::Yes {
@@ -21,10 +28,13 @@ impl PedersenCommitment {
     }
 
     let h = {
-      let alpha = 
-      let n = (generator * alpha).complete();
+      let num_bits = group_order.significant_bits();
+      let mut rng = get_rng();
+      let alpha = gen_random_number(num_bits, &mut *rng);
+      let n = (g * &alpha).complete();
       n % group_order
     };
+
     Self {
       group_order: group_order.clone(),
       g: g.clone(),
@@ -32,21 +42,12 @@ impl PedersenCommitment {
     }
   }
 
-  pub fn commit(&self, u: &Integer) -> (Element, Integer) {
-    let mut rng = rand::thread_rng();
-    let r = Integer::from(rng.gen_range(0..u64::MAX));
-
-    let C = &self.g * u + &self.h * &r;
-    (C, r)
-  }
-
-  pub fn verify(
+  pub fn commit(
     &self,
-    C: &Element,
-    u: &Integer,
+    m: &Integer,
     r: &Integer,
-  ) -> bool {
-     C == &self.g * u + &self.h * r
+  ) -> Integer {
+    (&self.g * m).complete() + (&self.h * r).complete()
   }
 }
 
@@ -55,19 +56,19 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test() {
-    let eleven = Integer::from(11); 
-    let two = Integer::from(2); 
-    let three = Integer::from(3); 
+  fn test_pedersen() {
+    let group_order = Integer::from(11); 
+    let g = Integer::from(2); 
+    let r = Integer::from(3); 
 
-    let group_11 = AdditiveGroup::new(&eleven);
-    let g = group_11.element(&two); 
-    let h = group_11.element(&three); 
-    let _ = PedersenCommitment::new(
-      &group_11,
+    let pedersen = PedersenCommitment::new(
+      &group_order,
       &g,
-      &h,
     );
+
+    let m = Integer::from(5); 
+    let commitment = pedersen.commit(&m, &r);
+    println!("commitment: {:?}", commitment);
   } 
 }
 
