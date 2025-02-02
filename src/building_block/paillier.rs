@@ -74,7 +74,10 @@ impl Paillier {
     }
   }
 
-  pub fn new(num_bits: u32, g_calc_method: GCalcMethod) -> (PublicKey, SecretKey) {
+  pub fn new(
+    num_bits: u32,
+    g_calc_method: GCalcMethod,
+  ) -> (PublicKey, SecretKey) {
     let mut rng = get_rng();
 
     // generate distinct primes p and q
