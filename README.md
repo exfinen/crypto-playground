@@ -3,9 +3,9 @@
 Implemented:
 - Yao's Garbled Circuit
 - GG18 Building Blocks:
-  - Paillier Cryptosystem
   - Pedersen Commitment
-  - MtA
+  - Paillier Cryptosystem
+  - MtA (w/o Range Proofs)
 
 Implementing:
 - GG18
