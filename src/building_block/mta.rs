@@ -19,15 +19,11 @@ use crate::building_block::util::gen_random_number;
 pub struct Alice {
   a: Integer, // additive share
   alpha: Option<Integer>, // multiplicative share
-  c_a: Option<Integer>,
-  c_b: Option<Integer>,
 }
 
 pub struct Bob {
   b: Integer, // additive share
   beta: Option<Integer>, // multiplicative share
-  c_a: Option<Integer>,
-  c_b: Option<Integer>,
 }
 
 pub struct C_a_RangeProof {
@@ -46,25 +42,22 @@ impl Alice {
     Alice {
       a: a.clone(),
       alpha: None,
-      c_a: None,
-      c_b: None,
     }
   }
 
-  pub fn receive_c_b(
+  pub fn calc_alpha(
     &mut self,
     c_b: &C_b_RangeProofs,
     mta: &MtA,
   ) -> () {
-    // TODO check if range proofs are valid here?
-    self.c_b = Some(c_b.value.clone());
+    // TODO check if c_b's range proofs are valid here
  
     // alice decrypts c_b to get alpha = ab + beta'
     let alpha = Paillier::decrypt(&c_b.value, &mta.sk, &mta.pk);
     self.alpha = Some(alpha);
   }
 
-  pub fn gen_c_a(
+  pub fn calc_c_a(
     &mut self,
     num_rand_bits: u32,
     mta: &MtA,
@@ -73,7 +66,6 @@ impl Alice {
     let c_a = Paillier::encrypt(
       num_rand_bits, &mut *rng, &self.a, &mta.pk
     );
-    self.c_a = Some(c_a.clone());
 
     // range proof of a < q^3
     let range_proof_a = Integer::ZERO; // TODO implement this
@@ -90,21 +82,17 @@ impl Bob {
     Bob {
       b: b.clone(),
       beta: None,
-      c_a: None,
-      c_b: None,
     }
   }
 
-  pub fn receive_c_a(&mut self, c_a: &C_a_RangeProof) -> () {
-    // TODO check if range proof is valid here?
-    self.c_a = Some(c_a.value.clone());
-  }
-
-  pub fn gen_c_b(
+  pub fn calc_c_b_and_beta(
     &mut self,
+    c_a: &C_a_RangeProof,
     mta: &MtA,
     rng: &mut dyn MutRandState,
   ) -> C_b_RangeProofs {
+    // TODO check if range proof of c_a is valid here
+  
     let beta_prime = gen_random_number(
       mta.q5.significant_bits(),
       &mut *rng,
@@ -119,13 +107,12 @@ impl Bob {
     // c_b = ENC(ab) + c_beta'
     let c_b = {
       let c_a_times_b = Paillier::scalar_mul(
-        &self.c_a.clone().unwrap(),
+        &c_a.value,
         &self.b,
         &mta.pk,
       );
       Paillier::add(&c_a_times_b, &c_beta_prime, &mta.pk)
     };
-    self.c_b = Some(c_b.clone());
 
     // beta in Z_q
     self.beta = Some({
@@ -197,14 +184,17 @@ mod tests {
     let b = gen_random_number(mta.q3.significant_bits(), &mut *rng);
     let mut bob = Bob::new(&b);
 
-    // alice encrypts her secret c_a = ENC(a) and sends c_a to bob
-    let c_a = alice.gen_c_a(num_bits, &mta, &mut *rng);
-    bob.receive_c_a(&c_a);
+    // alice calculates c_a and range proof of a
+    let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
 
-    // bob calculates c_b and range_proof of b and beta' and send to alice
-    let c_b = bob.gen_c_b(&mta, &mut *rng);
-    alice.receive_c_b(&c_b, &mta);
-  
+    // bob recieves c_a from alice and checks if the range_proof 
+    // is valid. then bob calculates c_b, range proofs and beta
+    let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
+
+    // alice receives c_b from bob and checks if range_proof of b 
+    // and beta' are valid. then alice decrypts c_b to get alpha
+    alice.calc_alpha(&c_b, &mta);
+
     // now a and b are multiplicatively shared between alice and bob
     // as alpha and beta respectively
     let alpha = alice.alpha.clone().unwrap();
