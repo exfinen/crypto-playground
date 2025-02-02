@@ -2,6 +2,12 @@ use rand::{
   rngs::OsRng,
   RngCore,
 };
+use rug::{
+  Assign,
+  Integer,
+  integer::IsPrime,
+  rand::MutRandState,
+};
 
 pub fn gen_random_binary_val() -> bool {
   if OsRng.next_u32() as u8 % 2 == 0 { false } else { true }
@@ -33,6 +39,26 @@ pub fn xor_vecs(v1: &Vec<u8>, v2: &Vec<u8>) -> Vec<u8> {
     .zip(v2.iter())
     .map(|(a, b)| a ^ b)
     .collect()
+}
+
+pub fn gen_random_number(
+  num_bits: u32,
+  rng: &mut dyn MutRandState,
+) -> Integer {
+  Integer::from(Integer::random_bits(num_bits, rng))
+}
+
+pub fn gen_random_prime(
+  num_bits: u32,
+  rng: &mut dyn MutRandState,
+) -> Integer {
+  let mut n = Integer::from(Integer::random_bits(num_bits, rng));
+
+  let num_ite = 25;
+  while n.is_probably_prime(num_ite) != IsPrime::Yes {
+    n.assign(Integer::random_bits(num_bits, rng));
+  }
+  n
 }
 
 #[cfg(test)]

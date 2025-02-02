@@ -3,6 +3,6 @@
 Implemented:
 - Yao's Garbled Circuit
 
-Implemenring:
+Implementing:
 - GG18
 

@@ -1,27 +1,32 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
-use crate::building_block::additive_group::{
-  AdditiveGroup,
-  Element,
-};
 use rand::Rng;
-use rug::Integer;
+use rug::{Complete, Integer};
 
 pub struct PedersenCommitment {
-  G: AdditiveGroup,  // cyclic group
-  g: Element,  // generator of g
-  h: Element,  // h = g^r for some random r
+  group_order: Integer,
+  g: Element,
+  h: Element,
 }
 
 impl PedersenCommitment {
   pub fn new(
-    G: &AdditiveGroup,
-    g: &Element,
-    h: &Element,
+    group_order: &Integer,
+    generator: &Integer,
   ) -> Self {
+    let num_ite = 25;
+    if group_order.is_probably_prime(num_ite) != IsPrime::Yes {
+      panic!("Group order must be a prime");
+    }
+
+    let h = {
+      let alpha = 
+      let n = (generator * alpha).complete();
+      n % group_order
+    };
     Self {
-      G: G.clone(),
+      group_order: group_order.clone(),
       g: g.clone(),
       h: h.clone(),
     }

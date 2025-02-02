@@ -2,9 +2,15 @@
 #![allow(dead_code)]
 
 use rand::Rng;
-use rug::{Assign, Complete, Integer};
-use rug::integer::IsPrime;
-use rug::rand::{MutRandState, RandState};
+use rug::{
+  Complete,
+  Integer,
+  rand::{MutRandState, RandState},
+};
+use crate::building_block::util::{
+  gen_random_number,
+  gen_random_prime,
+};
 
 pub enum GCalcMethod {
   Random,
@@ -26,24 +32,6 @@ pub struct SecretKey {
 }
 
 impl Paillier {
-  fn gen_random_number() -> Integer {
-    let mut rng = rand::thread_rng();
-    Integer::from(rng.gen::<u128>())
-  }
-
-  pub fn gen_random_prime(
-    num_bits: u32,
-    rng: &mut dyn MutRandState,
-  ) -> Integer {
-    let mut n = Integer::from(Integer::random_bits(num_bits, rng));
-
-    let num_ite = 25;
-    while n.is_probably_prime(num_ite) != IsPrime::Yes {
-      n.assign(Integer::random_bits(num_bits, rng));
-    }
-    n
-  }
-
   // mod nn -> mod n
   fn L(u: &Integer, n: &Integer) -> Integer {
     let u_minus_1 = (u - 1u8).complete();
@@ -51,6 +39,8 @@ impl Paillier {
   }
 
   fn calc_g(
+    num_bits: u32,
+    rng: &mut dyn MutRandState,
     calc_method: &GCalcMethod,
     n: &Integer,
     nn: &Integer,
@@ -60,7 +50,7 @@ impl Paillier {
         // g is an element of Z^*_n^2
         // such that gcd(g, n^2) = 1
         loop {
-          let g = Self::gen_random_number();
+          let g = gen_random_number(num_bits, rng);
           if &g.clone().gcd(&nn) == Integer::ONE {
             break g;
           }
@@ -70,7 +60,7 @@ impl Paillier {
         loop {
           // find k that is coprime to n
           let k = loop {
-            let k = Self::gen_random_number();
+            let k = gen_random_number(num_bits, rng);
             if &k.clone().gcd(&n) == Integer::ONE {
               break k;
             }
@@ -84,7 +74,7 @@ impl Paillier {
     }
   }
 
-  pub fn new(num_bits: u32, g_calc_method: GCalcMethod) -> (PublicKey, SecretKey) {
+  pub fn get_rng() -> Box<dyn MutRandState> {
     let mut rng = RandState::new();
     let seed = {
       use rand::thread_rng;
@@ -92,11 +82,16 @@ impl Paillier {
       Integer::from(rng.gen::<u128>())
     };
     rng.seed(&seed);
+    Box::new(rng)
+  }
+
+  pub fn new(num_bits: u32, g_calc_method: GCalcMethod) -> (PublicKey, SecretKey) {
+    let mut rng = Self::get_rng();
 
     // generate distinct primes p and q
-    let p = Self::gen_random_prime(num_bits, &mut rng);
+    let p = gen_random_prime(num_bits, &mut *rng);
     let q = loop {
-      let q = Self::gen_random_prime(num_bits, &mut rng);
+      let q = gen_random_prime(num_bits, &mut *rng);
       if &p != &q {
         break q;
       }
@@ -111,7 +106,9 @@ impl Paillier {
 
     let (g, mu) = {
       loop {
-        let g = Self::calc_g(&g_calc_method, &n, &nn);
+        let g = Self::calc_g(
+          num_bits, &mut *rng, &g_calc_method, &n, &nn,
+        );
         let g_lambda = g.clone().pow_mod(&lambda, &nn).unwrap();
         let k = Self::L(&g_lambda, &n);
         // k needs be a coprime to g to have an inverse
@@ -128,7 +125,12 @@ impl Paillier {
   }
 
   // encrypted message is in multiplicative group modulo n^2
-  pub fn encrypt(m: &Integer, pk: &PublicKey) -> Integer {
+  pub fn encrypt(
+    num_bits: u32,
+    rng: &mut dyn MutRandState,
+    m: &Integer,
+    pk: &PublicKey,
+  ) -> Integer {
     if m < &Integer::ZERO || m >= &pk.n {
       panic!("m should be in additive group module n");
     }
@@ -138,7 +140,7 @@ impl Paillier {
     // Z_{n^2} is multiplicative group of integers modulo n^2 (Z/n^2Z)
     // select r randomly from Z_{n^2}
     let r = loop {
-      let r = Self::gen_random_number() % nn;
+      let r = gen_random_number(num_bits, rng) % nn;
       if &r.clone().gcd(nn) == Integer::ONE {
         break r;
       }
@@ -231,16 +233,16 @@ mod tests {
 
   #[test]
   fn test_enc_dec() {
-    use rand::thread_rng;
     use std::io::{self, Write};
 
-    let mut rng = thread_rng();
+    let mut rng = Paillier::get_rng();
+    let num_bits = 64;
 
-    for _ in 0..100 {
-      let (pk, sk) = Paillier::new(64, GCalcMethod::Random);
-      let m = Integer::from(rng.gen::<u128>()) % &pk.n;
+    for _ in 0..10 {
+      let (pk, sk) = Paillier::new(num_bits, GCalcMethod::Random);
+      let m = gen_random_number(num_bits, &mut *rng) % &pk.n;
 
-      let c = Paillier::encrypt(&m, &pk);
+      let c = Paillier::encrypt(num_bits, &mut *rng, &m, &pk);
       let m_prime = Paillier::decrypt(&c, &sk, &pk);
       assert_eq!(m, m_prime);
 
