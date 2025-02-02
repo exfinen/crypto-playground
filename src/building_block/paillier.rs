@@ -159,17 +159,16 @@ impl Paillier {
   }
 
   pub fn add(
-    c1: &Integer,
-    c2: &Integer,
+    c1: &Integer, // encrypted message 1
+    c2: &Integer, // encrypted message 2
     pk: &PublicKey,
   ) -> Integer {
     let nn = (&pk.n * &pk.n).complete();
-    let sum = (c1 + c2).complete();
-    sum % &nn
+    (c1 * c2).complete() % nn
   }
 
   pub fn scalar_mul(
-    c: &Integer,
+    c: &Integer, // encrypted message
     m: &Integer, // multiplier
     pk: &PublicKey,
   ) -> Integer {
@@ -203,13 +202,16 @@ mod tests {
 
   #[test]
   fn test_add() {
+    // p = 3, q = 5, n = 15, n^2 = 225
     let pk = PublicKey {
-      n: Integer::from(8),
-      g: Integer::ONE.clone(),
+        n: Integer::from(15),
+        g: Integer::ONE.clone(),
     };
+    // Homomorphic addition is performed as multiplication modulo n^2.
+    // Compute: (44 * 55) mod 225.
+    // 44 * 55 = 2420 and 2420 mod 225 = 2420 - (225 * 10) = 2420 - 2250 = 170.
     let res = Paillier::add(&Integer::from(44), &Integer::from(55), &pk);
-    // 99 mod 64 = 35
-    assert_eq!(res, Integer::from(35));
+    assert_eq!(res, Integer::from(170));
   }
 
   #[test]
@@ -242,5 +244,24 @@ mod tests {
       io::stdout().flush().unwrap();
     }
   } 
+
+  #[test]
+  fn test_additive_homomorphic_property() {
+    let mut rng = get_rng();
+    let num_bits = 64;
+
+    let (pk, sk) = Paillier::new(num_bits, GCalcMethod::Random);
+    let m1 = gen_random_number(num_bits, &mut *rng) % &pk.n;
+    let m2 = gen_random_number(num_bits, &mut *rng) % &pk.n;
+
+    let c1 = Paillier::encrypt(num_bits, &mut *rng, &m1, &pk);
+    let c2 = Paillier::encrypt(num_bits, &mut *rng, &m2, &pk);
+
+    let c3 = Paillier::add(&c1, &c2, &pk);
+    let m3 = Paillier::decrypt(&c3, &sk, &pk);
+
+    let m3_prime = (m1 + m2) % &pk.n;
+    assert_eq!(m3, m3_prime);
+  }
 }
 
