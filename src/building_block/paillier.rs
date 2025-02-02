@@ -159,8 +159,8 @@ impl Paillier {
   }
 
   pub fn add(
-    c1: &Integer, // encrypted message 1
-    c2: &Integer, // encrypted message 2
+    c1: &Integer, // cyphertext
+    c2: &Integer, // cyphertext
     pk: &PublicKey,
   ) -> Integer {
     let nn = (&pk.n * &pk.n).complete();
@@ -168,8 +168,8 @@ impl Paillier {
   }
 
   pub fn scalar_mul(
-    c: &Integer, // encrypted message
-    m: &Integer, // multiplier
+    c: &Integer, // cyphertext 
+    m: &Integer, // plaintext multiplier
     pk: &PublicKey,
   ) -> Integer {
     let nn = &(&pk.n * &pk.n).complete();
