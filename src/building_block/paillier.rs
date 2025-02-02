@@ -173,26 +173,7 @@ impl Paillier {
     pk: &PublicKey,
   ) -> Integer {
     let nn = &(&pk.n * &pk.n).complete();
-
-    let mut res = Integer::ZERO;
-    let mut m = m.clone();
-    let mut bit_amount = c.clone();
-
-    while &m != &Integer::ZERO {
-      // if the least significant bit is 1
-      let lsb = (&m & Integer::ONE).complete();
-      if &lsb == Integer::ONE {
-        // add the amount for the current bit to res
-        res += &bit_amount;
-        if &res > nn {
-          res = res % nn;
-        }
-      }
-      // update bit_amount to represent the next bit 
-      bit_amount = (&bit_amount + &bit_amount).complete();
-      m = m >> &1u32; // shift to the right to test the next bit
-    }
-    res
+    c.clone().pow_mod(m, &nn).unwrap()
   }
 }
 
@@ -216,13 +197,13 @@ mod tests {
 
   #[test]
   fn test_scalar_mul() {
-    let pk = PublicKey {
-      n: Integer::from(8),
-      g: Integer::ONE.clone(),
-    };
-    let res = Paillier::scalar_mul(&Integer::from(11), &Integer::from(9), &pk);
-    // 99 mod 64 = 35
-    assert_eq!(res, Integer::from(35));
+      let pk = PublicKey {
+          n: Integer::from(15),
+          g: Integer::from(16),
+      };
+      // 11^9 mod 225 should be 116
+      let res = Paillier::scalar_mul(&Integer::from(11), &Integer::from(9), &pk);
+      assert_eq!(res, Integer::from(116));
   }
 
   #[test]

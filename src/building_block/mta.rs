@@ -1,3 +1,7 @@
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+#![allow(non_camel_case_types)]
+
 use rug::ops::Pow;
 use rug::Complete;
 use rug::{
@@ -10,10 +14,7 @@ use crate::building_block::paillier::{
   PublicKey,
   SecretKey,
 };
-use crate::building_block::util::{
-  gen_random_number,
-  get_rng,
-};
+use crate::building_block::util::gen_random_number;
 
 pub struct Alice {
   a: Integer, // additive share
@@ -108,21 +109,29 @@ impl Bob {
       mta.q5.significant_bits(),
       &mut *rng,
     );
+    let c_beta_prime = Paillier::encrypt(
+      mta.pk.n.significant_bits(),
+      &mut *rng,
+      &beta_prime,
+      &mta.pk,
+    );
 
-    // c_b = ENC(ab + beta')
-    let nn = mta.pk.n.clone().pow(2);
+    // c_b = ENC(ab) + c_beta'
     let c_b = {
       let c_a_times_b = Paillier::scalar_mul(
         &self.c_a.clone().unwrap(),
         &self.b,
         &mta.pk,
-      ) % &nn;
-      Paillier::add(&c_a_times_b, &beta_prime, &mta.pk)
+      );
+      Paillier::add(&c_a_times_b, &c_beta_prime, &mta.pk)
     };
     self.c_b = Some(c_b.clone());
 
     // beta in Z_q
-    self.beta = Some(beta_prime * -1i8);
+    self.beta = Some({
+      let neg_beta_prime = (&beta_prime * -1i8).complete() % &mta.q;
+      &mta.q + neg_beta_prime
+    });
 
     // beta' is in Z_q^5
     // b < q^3 and beta' < q^7
@@ -174,6 +183,7 @@ impl MtA {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::building_block::util::get_rng;
 
   #[test]
   fn test_mta() {
