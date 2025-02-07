@@ -1,13 +1,9 @@
 use rand::{
   rngs::OsRng,
   RngCore,
-  Rng,
 };
 use rug::{
-  Assign,
-  Integer,
-  integer::IsPrime,
-  rand::{MutRandState, RandState},
+  integer::IsPrime, rand::{MutRandState, RandState}, Assign, Complete, Integer
 };
 
 pub fn gen_random_binary_val() -> bool {
@@ -42,12 +38,12 @@ pub fn xor_vecs(v1: &Vec<u8>, v2: &Vec<u8>) -> Vec<u8> {
     .collect()
 }
 
-pub fn get_rng() -> Box<dyn MutRandState> {
+pub fn get_32_byte_rng() -> Box<dyn MutRandState> {
   let mut rng = RandState::new();
   let seed = {
-    use rand::thread_rng;
-    let mut rng = thread_rng();
-    Integer::from(rng.gen::<u128>())
+    let mut random_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut random_bytes);
+    Integer::from_digits(&random_bytes, rug::integer::Order::Msf)
   };
   rng.seed(&seed);
   Box::new(rng)
@@ -57,18 +53,18 @@ pub fn gen_random_number(
   num_bits: u32,
   rng: &mut dyn MutRandState,
 ) -> Integer {
-  Integer::from(Integer::random_bits(num_bits, rng))
+  Integer::random_bits(num_bits, rng).complete()
 }
 
 pub fn gen_random_prime(
   num_bits: u32,
   rng: &mut dyn MutRandState,
 ) -> Integer {
-  let mut n = Integer::from(Integer::random_bits(num_bits, rng));
+  let mut n = gen_random_number(num_bits, rng);
 
   let num_ite = 25;
   while n.is_probably_prime(num_ite) != IsPrime::Yes {
-    n.assign(Integer::random_bits(num_bits, rng));
+    n.assign(gen_random_number(num_bits, rng));
   }
   n
 }

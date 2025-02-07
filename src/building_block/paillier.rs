@@ -9,7 +9,7 @@ use rug::{
 use crate::building_block::util::{
   gen_random_number,
   gen_random_prime,
-  get_rng,
+  get_32_byte_rng,
 };
 
 pub enum GCalcMethod {
@@ -78,7 +78,7 @@ impl Paillier {
     num_bits: u32,
     g_calc_method: GCalcMethod,
   ) -> (PublicKey, SecretKey) {
-    let mut rng = get_rng();
+    let mut rng = get_32_byte_rng();
 
     // generate distinct primes p and q
     let p = gen_random_prime(num_bits, &mut *rng);
@@ -210,7 +210,7 @@ mod tests {
   fn test_enc_dec() {
     use std::io::{self, Write};
 
-    let mut rng = get_rng();
+    let mut rng = get_32_byte_rng();
     let num_bits = 64;
 
     for _ in 0..10 {
@@ -228,7 +228,7 @@ mod tests {
 
   #[test]
   fn test_additive_homomorphic_property() {
-    let mut rng = get_rng();
+    let mut rng = get_32_byte_rng();
     let num_bits = 64;
 
     let (pk, sk) = Paillier::new(num_bits, GCalcMethod::Random);

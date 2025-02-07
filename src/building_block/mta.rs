@@ -170,13 +170,13 @@ impl MtA {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::building_block::util::get_rng;
+  use crate::building_block::util::get_32_byte_rng;
 
   #[test]
   fn test_mta() {
     let num_bits = 64;
     let mta = MtA::new(num_bits);
-    let mut rng = get_rng();
+    let mut rng = get_32_byte_rng();
 
     let a = gen_random_number(mta.q3.significant_bits(), &mut *rng);
     let mut alice = Alice::new(&a);

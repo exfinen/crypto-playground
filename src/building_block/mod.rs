@@ -10,6 +10,7 @@ pub mod ot;
 pub mod output_decoding_table;
 pub mod paillier;
 pub mod pedersen;
+pub mod secp256k1;
 pub mod wire;
 pub mod wires;
 pub mod wire_assignment;

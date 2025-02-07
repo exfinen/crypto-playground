@@ -8,7 +8,7 @@ use rug::{
 };
 use crate::building_block::util::{
   gen_random_number,
-  get_rng,
+  get_32_byte_rng,
 };
 
 pub struct PedersenCommitment {
@@ -29,7 +29,7 @@ impl PedersenCommitment {
 
     let h = {
       let num_bits = group_order.significant_bits();
-      let mut rng = get_rng();
+      let mut rng = get_32_byte_rng();
       let alpha = gen_random_number(num_bits, &mut *rng);
       let n = (g * &alpha).complete();
       n % group_order
