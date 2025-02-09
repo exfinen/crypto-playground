@@ -3,14 +3,14 @@
 
 use std::{
   ffi::c_int,
-  ops::{Add, Mul},
+  ops::{Add, AddAssign, Mul},
   cmp::PartialEq,
 };
 use crate::building_block::secp256k1::scalar::Scalar;
 
 extern "C" {
   fn secp256k1_export_group_add(r: *mut Point, a: *const Point, b: *const Point);
-  fn secp256k1_export_group_ecmult(r: *mut Point, q: Scalar);
+  fn secp256k1_export_group_ecmult(r: *mut Point, a: *const Point, q: Scalar);
   fn secp256k1_export_group_eq(a: *const Point, b: *const Point) -> c_int;
   fn secp256k1_export_group_get_base_point(r: *mut Point);
 }
@@ -25,7 +25,7 @@ pub struct Point { // using 5x52 expecting 64-bit arch
 }
 
 impl Point {
-  pub fn new() -> Self { // returns point at infinity
+  fn new() -> Self { // returns point at infinity
     Point {
       x: [0; 5],
       y: [0; 5],
@@ -40,6 +40,17 @@ impl Point {
       secp256k1_export_group_get_base_point(&mut p);
     }
     p
+  }
+
+  pub fn get_point_at_infinity() -> Self {
+    Self::new()
+  }
+}
+
+impl From<Scalar> for Point {
+  fn from(n: Scalar) -> Self {
+    let g = Point::get_base_point();
+    g * n
   }
 }
 
@@ -67,13 +78,24 @@ impl Add<&Point> for Point {
   }
 }
 
+impl AddAssign<Point> for Point {
+  fn add_assign(&mut self, rhs: Self) {
+    let res = self.clone() + rhs;
+
+    self.x = res.x;
+    self.y = res.y;
+    self.z = res.z;
+    self.infinity = res.infinity;
+  }
+}
+
 impl Mul<Scalar> for Point {
   type Output = Point;
 
   fn mul(self, rhs: Scalar) -> Point {
     let mut r = Point::new();
     unsafe {
-      secp256k1_export_group_ecmult(&mut r, rhs);
+      secp256k1_export_group_ecmult(&mut r, &self, rhs);
     }
     r
   }
@@ -85,7 +107,7 @@ impl Mul<&Scalar> for Point {
   fn mul(self, rhs: &Scalar) -> Point {
     let mut r = Point::new();
     unsafe {
-      secp256k1_export_group_ecmult(&mut r, *rhs);
+      secp256k1_export_group_ecmult(&mut r, &self, *rhs);
     }
     r
   }
@@ -108,7 +130,7 @@ mod tests {
 
   #[test]
   fn test_add_mul() {
-    let two = Scalar::from(2);
+    let two = Scalar::from(2u32);
     let a = Point::get_base_point();
     let b = a + a;
     let c = a * two;

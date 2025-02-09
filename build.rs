@@ -20,7 +20,6 @@ fn main() {
 
   let lib_dir = format!("{}/.libs/libsecp256k1.a", secp256k1_dir);
   let lib_path = Path::new(&lib_dir);
-
   if !lib_path.exists() {
     Command::new("sh")
       .arg("autogen.sh")

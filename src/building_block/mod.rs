@@ -1,5 +1,6 @@
 pub mod additive_group;
 pub mod circuit;
+pub mod feldman_vss;
 pub mod gate;
 pub mod gates;
 pub mod gate_model;
