@@ -131,6 +131,18 @@ impl Add<Scalar> for Scalar {
   }
 }
 
+impl Add<Scalar> for &Scalar {
+  type Output = Scalar;
+
+  fn add(self, rhs: Scalar) -> Scalar {
+    let mut r = Scalar::new();
+    unsafe {
+      secp256k1_export_scalar_add(&mut r, self, &rhs);
+    }
+    r
+  }
+}
+
 impl AddAssign<Scalar> for Scalar {
   fn add_assign(&mut self, rhs: Self) {
     let res = self.clone() + rhs;
@@ -157,6 +169,18 @@ impl Mul<Scalar> for Scalar {
     let mut r = Scalar::new();
     unsafe {
       secp256k1_export_scalar_mul(&mut r, &self, &rhs);
+    }
+    r
+  }
+}
+
+impl Mul<Scalar> for &Scalar {
+  type Output = Scalar;
+
+  fn mul(self, rhs: Scalar) -> Scalar {
+    let mut r = Scalar::new();
+    unsafe {
+      secp256k1_export_scalar_mul(&mut r, self, &rhs);
     }
     r
   }

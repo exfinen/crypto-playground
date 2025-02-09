@@ -37,7 +37,7 @@ impl FeldmanVss {
     let mut res = self.coeffs[0];
     
     for coeff in &self.coeffs[1..] {
-      res += *coeff * x;
+      res += coeff * x;
       x *= x;
     }
     res
@@ -46,7 +46,7 @@ impl FeldmanVss {
   // returns g^coeff from x^0 to x^degree
   pub fn calc_coeff_hidings(&self) -> Vec<Point> {
     self.coeffs.iter()
-      .map(|coeff| Point::from(*coeff))
+      .map(|coeff| Point::from(coeff))
       .collect::<Vec<_>>()
   }
 
@@ -58,10 +58,50 @@ impl FeldmanVss {
     let mut res = coeff_hidings[0].clone(); 
 
     for coeff_hiding in &coeff_hidings[1..] {
-      res += *coeff_hiding * x;
+      res += coeff_hiding * x;
       x *= x;
     }
     res
+  }
+
+  // k = threshold
+  // lambda_i(x) = prod j=1->k, j!=i (x - x_j) / (x_i - x_j) 
+  pub fn calc_lagrange_basis_polynomial(
+    xs: &Vec<&Scalar>,
+    i: usize,
+    target: &Scalar, // interpolation target x
+  ) -> Scalar {
+    let mut prod = Scalar::from(1u32);
+
+    for (curr_i, x_j) in xs.iter().enumerate() {
+      if curr_i == i {
+        continue;
+      }
+      let num = target + x_j.neg();
+      let deno = xs[i] + x_j.neg();
+      prod *= num * deno.inv();
+    }
+    prod
+  }
+
+  // f(x) = sum i=1->k y_i * lambda_i(x)
+  pub fn open_secret_with_shares(
+    shares: Vec<(Scalar, Scalar)>,
+  ) -> Scalar {
+    let mut secret = Scalar::zero();
+
+    let xs = shares.iter().map(|(x, _)| x).collect::<Vec<_>>();
+    let target = Scalar::zero();
+
+    for (i, (_, y)) in shares.iter().enumerate() {
+      let lambda = Self::calc_lagrange_basis_polynomial(
+        &xs,
+        i,
+        &target,
+      );
+      secret += y * lambda
+    }
+    secret
   }
 }
 
@@ -99,6 +139,22 @@ mod tests {
     assert_eq!(vss.coeffs.len(), 2);
     assert_eq!(vss.coeffs[0], secret);
     assert_eq!(vss.coeffs[1], Scalar::from(3u32));
+  }
+
+  #[test]
+  fn test_interpolation() {
+    // f(x) = 3x + 5
+    //
+    // shares:
+    // (1, 8)
+    // (3, 14)
+
+    let shares = vec![
+      (Scalar::from(1u32), Scalar::from(8u32)),
+      (Scalar::from(3u32), Scalar::from(14u32)),
+    ];
+    let secret = FeldmanVss::open_secret_with_shares(shares);
+    assert_eq!(secret, Scalar::from(5u32));
   }
 
   #[test]

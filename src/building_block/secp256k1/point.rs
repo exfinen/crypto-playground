@@ -54,6 +54,13 @@ impl From<Scalar> for Point {
   }
 }
 
+impl From<&Scalar> for Point {
+  fn from(n: &Scalar) -> Self {
+    let g = Point::get_base_point();
+    g * n
+  }
+}
+
 impl Add<Point> for Point {
   type Output = Point;
 
@@ -96,6 +103,18 @@ impl Mul<Scalar> for Point {
     let mut r = Point::new();
     unsafe {
       secp256k1_export_group_ecmult(&mut r, &self, rhs);
+    }
+    r
+  }
+}
+
+impl Mul<Scalar> for &Point {
+  type Output = Point;
+
+  fn mul(self, rhs: Scalar) -> Point {
+    let mut r = Point::new();
+    unsafe {
+      secp256k1_export_group_ecmult(&mut r, self, rhs);
     }
     r
   }
