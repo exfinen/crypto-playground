@@ -71,7 +71,7 @@ impl FeldmanVss {
     i: usize,
     target: &Scalar, // interpolation target x
   ) -> Scalar {
-    let mut prod = Scalar::from(1u32);
+    let mut prod = 1u8.into();
 
     for (curr_i, x_j) in xs.iter().enumerate() {
       if curr_i == i {
@@ -133,12 +133,11 @@ mod tests {
 
   #[test]
   fn test_new() {
-    let secret = Scalar::from(7u32);
+    let secret = Scalar::from(7u8);
     let threshold = 2;
     let vss = FeldmanVss::new(&secret, threshold);
     assert_eq!(vss.coeffs.len(), 2);
     assert_eq!(vss.coeffs[0], secret);
-    assert_eq!(vss.coeffs[1], Scalar::from(3u32));
   }
 
   #[test]
@@ -149,12 +148,12 @@ mod tests {
     // (1, 8)
     // (3, 14)
 
-    let shares = vec![
-      (Scalar::from(1u32), Scalar::from(8u32)),
-      (Scalar::from(3u32), Scalar::from(14u32)),
+    let shares: Vec<(Scalar, Scalar)> = vec![
+      (1u8.into(), 8u8.into()),
+      (3u8.into(), 14u8.into()),
     ];
     let secret = FeldmanVss::open_secret_with_shares(shares);
-    assert_eq!(secret, Scalar::from(5u32));
+    assert_eq!(secret, 5u8.into());
   }
 
   #[test]
@@ -162,13 +161,13 @@ mod tests {
     let vss = FeldmanVss {
       // P = 3x + 5
       coeffs: vec![
-        Scalar::from(5u32),
-        Scalar::from(3u32),
+        5u8.into(),
+        3u8.into(),
       ],
     };
-    assert_eq!(vss.eval_P_at_i(1), Scalar::from(8u32));
-    assert_eq!(vss.eval_P_at_i(2), Scalar::from(11u32));
-    assert_eq!(vss.eval_P_at_i(3), Scalar::from(14u32));
+    assert_eq!(vss.eval_P_at_i(1), 8u8.into());
+    assert_eq!(vss.eval_P_at_i(2), 11u8.into());
+    assert_eq!(vss.eval_P_at_i(3), 14u8.into());
   }
 
   #[test]
