@@ -13,17 +13,32 @@ use rand::{
 };
 
 extern "C" {
-  fn secp256k1_export_scalar_set_int(r: *mut Scalar, n: u32);
-  fn secp256k1_export_scalar_inverse(r: *mut Scalar, a: *const Scalar);
-  fn secp256k1_export_scalar_negate(r: *mut Scalar, a: *const Scalar);
-  fn secp256k1_export_scalar_eq(a: *const Scalar, b: *const Scalar) -> c_int;
+  #[link_name = "secp256k1_export_scalar_set_int"]
+  fn scalar_set_int(r: *mut Scalar, n: u32);
 
-  fn secp256k1_export_scalar_add(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
-  fn secp256k1_export_scalar_sub(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
+  #[link_name = "secp256k1_export_scalar_inverse"]
+  fn scalar_inverse(r: *mut Scalar, a: *const Scalar);
 
-  fn secp256k1_export_scalar_mul(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
-  fn secp256k1_export_scalar_set_b32(r: *mut Scalar, buf: *const u8);
-  fn secp256k1_export_scalar_get_b32(buf: *mut u8, a: *const Scalar);
+  #[link_name = "secp256k1_export_scalar_negate"]
+  fn scalar_negate(r: *mut Scalar, a: *const Scalar);
+
+  #[link_name = "secp256k1_export_scalar_eq"]
+  fn scalar_eq(a: *const Scalar, b: *const Scalar) -> c_int;
+
+  #[link_name = "secp256k1_export_scalar_set_b32"]
+  fn scalar_set_b32(r: *mut Scalar, buf: *const u8);
+
+  #[link_name = "secp256k1_export_scalar_get_b32"]
+  fn scalar_get_b32(buf: *mut u8, a: *const Scalar);
+
+  #[link_name = "secp256k1_export_scalar_add"]
+  fn scalar_add(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
+
+  #[link_name = "secp256k1_export_scalar_sub"]
+  fn scalar_sub(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
+
+  #[link_name = "secp256k1_export_scalar_mul"]
+  fn scalar_mul(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
 }
 
 #[repr(C)]
@@ -46,7 +61,7 @@ impl Scalar {
   pub fn inv(&self) -> Self {
     let mut r = Scalar::new();
     unsafe {
-      secp256k1_export_scalar_inverse(&mut r, self);
+      scalar_inverse(&mut r, self);
     }
     r
   }
@@ -54,7 +69,7 @@ impl Scalar {
   pub fn neg(&self) -> Self {
     let mut r = Scalar::new();
     unsafe {
-      secp256k1_export_scalar_negate(&mut r, self);
+      scalar_negate(&mut r, self);
     }
     r
   }
@@ -78,7 +93,7 @@ impl From<Scalar> for u64 {
     let mut buf = [0u8; 32];
 
     unsafe {
-      secp256k1_export_scalar_get_b32(buf.as_mut_ptr(), &s);
+      scalar_get_b32(buf.as_mut_ptr(), &s);
     }
     let mut ret: u64 = 0;
 
@@ -93,7 +108,7 @@ impl From<u32> for Scalar {
   fn from(n: u32) -> Self {
     let mut s = Scalar::new();
     unsafe {
-      secp256k1_export_scalar_set_int(&mut s, n);
+      scalar_set_int(&mut s, n);
     }
     s
   }
@@ -103,7 +118,7 @@ impl From<usize> for Scalar {
   fn from(n: usize) -> Self {
     let mut s = Scalar::new();
     unsafe {
-      secp256k1_export_scalar_set_int(&mut s, n as u32);
+      scalar_set_int(&mut s, n as u32);
     }
     s
   }
@@ -113,76 +128,89 @@ impl From<[u8; 32]> for Scalar {
   fn from(buf: [u8; 32]) -> Self {
     let mut s = Scalar::new();
     unsafe {
-      secp256k1_export_scalar_set_b32(&mut s, buf.as_ptr());
+      scalar_set_b32(&mut s, buf.as_ptr());
     }
     s
   }
 }
 
-impl Add<Scalar> for Scalar {
-  type Output = Scalar;
+macro_rules! impl_op {
+  ("nn", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
+    impl $trait<$rhs> for $lhs {
+      type Output = Scalar;
 
-  fn add(self, rhs: Scalar) -> Scalar {
-    let mut r = Scalar::new();
-    unsafe {
-      secp256k1_export_scalar_add(&mut r, &self, &rhs);
+      fn $op_fn(self, rhs: $rhs) -> Scalar {
+        let mut r = Scalar::new();
+        unsafe {
+          $ffi_fn(&mut r, &self, &rhs);
+        }
+        r
+      }
     }
-    r
-  }
+  };
+  ("rn", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
+    impl $trait<$rhs> for $lhs {
+      type Output = Scalar;
+
+      fn $op_fn(self, rhs: $rhs) -> Scalar {
+        let mut r = Scalar::new();
+        unsafe {
+          $ffi_fn(&mut r, self, &rhs);
+        }
+        r
+      }
+    }
+  };
+  ("nr", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
+    impl $trait<$rhs> for $lhs {
+      type Output = Scalar;
+
+      fn $op_fn(self, rhs: $rhs) -> Scalar {
+        let mut r = Scalar::new();
+        unsafe {
+          $ffi_fn(&mut r, &self, rhs);
+        }
+        r
+      }
+    }
+  };
+  ("rr", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
+    impl $trait<$rhs> for $lhs {
+      type Output = Scalar;
+
+      fn $op_fn(self, rhs: $rhs) -> Scalar {
+        let mut r = Scalar::new();
+        unsafe {
+          $ffi_fn(&mut r, self, rhs);
+        }
+        r
+      }
+    }
+  };
 }
 
-impl Add<Scalar> for &Scalar {
-  type Output = Scalar;
+// Add
+impl_op!("nn", Add, add, scalar_add, Scalar, Scalar);
+impl_op!("rn", Add, add, scalar_add, &Scalar, Scalar);
+impl_op!("nr", Add, add, scalar_add, Scalar, &Scalar);
+impl_op!("rr", Add, add, scalar_add, &Scalar, &Scalar);
 
-  fn add(self, rhs: Scalar) -> Scalar {
-    let mut r = Scalar::new();
-    unsafe {
-      secp256k1_export_scalar_add(&mut r, self, &rhs);
-    }
-    r
-  }
-}
+// Sub
+impl_op!("nn", Sub, sub, scalar_sub, Scalar, Scalar);
+impl_op!("rn", Sub, sub, scalar_sub, &Scalar, Scalar);
+impl_op!("nr", Sub, sub, scalar_sub, Scalar, &Scalar);
+impl_op!("rr", Sub, sub, scalar_sub, &Scalar, &Scalar);
+
+// Mul
+impl_op!("nn", Mul, mul, scalar_mul, Scalar, Scalar);
+impl_op!("rn", Mul, mul, scalar_mul, &Scalar, Scalar);
+impl_op!("nr", Mul, mul, scalar_mul, Scalar, &Scalar);
+impl_op!("rr", Mul, mul, scalar_mul, &Scalar, &Scalar);
 
 impl AddAssign<Scalar> for Scalar {
   fn add_assign(&mut self, rhs: Self) {
     let res = self.clone() + rhs;
     self.d = res.d;
-  }
-}
-
-impl Sub<Scalar> for Scalar {
-  type Output = Scalar;
-
-  fn sub(self, rhs: Scalar) -> Scalar {
-    let mut r = Scalar::new();
-    unsafe {
-      secp256k1_export_scalar_sub(&mut r, &self, &rhs);
-    }
-    r
-  }
-}
-
-impl Mul<Scalar> for Scalar {
-  type Output = Scalar;
-
-  fn mul(self, rhs: Scalar) -> Scalar {
-    let mut r = Scalar::new();
-    unsafe {
-      secp256k1_export_scalar_mul(&mut r, &self, &rhs);
-    }
-    r
-  }
-}
-
-impl Mul<Scalar> for &Scalar {
-  type Output = Scalar;
-
-  fn mul(self, rhs: Scalar) -> Scalar {
-    let mut r = Scalar::new();
-    unsafe {
-      secp256k1_export_scalar_mul(&mut r, self, &rhs);
-    }
-    r
   }
 }
 
@@ -197,7 +225,7 @@ impl PartialEq for Scalar {
   fn eq(&self, rhs: &Self) -> bool {
     let r;
     unsafe {
-      r = secp256k1_export_scalar_eq(self, rhs);
+      r = scalar_eq(self, rhs);
     }
     r != 0
   }
