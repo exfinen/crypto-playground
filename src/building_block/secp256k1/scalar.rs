@@ -88,41 +88,50 @@ impl fmt::Display for Scalar {
   }
 }
 
-impl From<Scalar> for u64 {
-  fn from(s: Scalar) -> Self {
-    let mut buf = [0u8; 32];
+macro_rules! impl_from_rhs {
+  ($lhs:ty, $num_bytes:expr) => {
+    impl From<Scalar> for $lhs {
+      fn from(s: Scalar) -> Self {
+        let mut buf = [0u8; 32];
 
-    unsafe {
-      scalar_get_b32(buf.as_mut_ptr(), &s);
-    }
-    let mut ret: u64 = 0;
+        unsafe {
+          scalar_get_b32(buf.as_mut_ptr(), &s);
+        }
+        let mut ret: $lhs = 0;
 
-    for i in 0..8 {
-      ret |= (buf[32 - 1 - i] as u64) << (i * 8);
+        for i in 0..$num_bytes {
+          ret |= (buf[32 - 1 - i] as $lhs) << (i * 8);
+        }
+        ret
+      }
     }
-    ret
   }
 }
+impl_from_rhs!(u128, 16);
+impl_from_rhs!(usize, 8);
+impl_from_rhs!(u64, 8);
+impl_from_rhs!(u32, 4);
+impl_from_rhs!(u16, 2);
+impl_from_rhs!(u8, 1);
 
-impl From<u32> for Scalar {
-  fn from(n: u32) -> Self {
-    let mut s = Scalar::new();
-    unsafe {
-      scalar_set_int(&mut s, n);
+macro_rules! impl_from_lhs {
+  ($lhs:ty) => {
+    impl From<$lhs> for Scalar {
+      fn from(n: $lhs) -> Self {
+        let mut s = Scalar::new();
+        unsafe {
+          scalar_set_int(&mut s, n as u32);
+        }
+        s
+      }
     }
-    s
   }
 }
-
-impl From<usize> for Scalar {
-  fn from(n: usize) -> Self {
-    let mut s = Scalar::new();
-    unsafe {
-      scalar_set_int(&mut s, n as u32);
-    }
-    s
-  }
-}
+impl_from_lhs!(usize);
+impl_from_lhs!(u64);
+impl_from_lhs!(u32);
+impl_from_lhs!(u16);
+impl_from_lhs!(u8);
 
 impl From<[u8; 32]> for Scalar {
   fn from(buf: [u8; 32]) -> Self {
