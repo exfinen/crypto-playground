@@ -148,10 +148,6 @@ mod tests {
   }
 
   #[test]
-  fn test_recover_secret() {
-  }
-
-  #[test]
   fn test_secret_recovery() {
     for threshold in 2..=100 {
       let secret = Scalar::rand();
