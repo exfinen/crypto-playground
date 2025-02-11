@@ -33,12 +33,13 @@ impl FeldmanVss {
   }
 
   pub fn eval_P_at_i(&self, i: usize) -> Scalar {
-    let mut x = Scalar::from(i);
+    let i = Scalar::from(i);
+    let mut x = i.clone();
     let mut res = self.coeffs[0];
     
     for coeff in &self.coeffs[1..] {
       res += coeff * x;
-      x *= x;
+      x *= i;
     }
     res
   }
@@ -85,9 +86,15 @@ impl FeldmanVss {
   }
 
   // f(x) = sum i=1->k y_i * lambda_i(x)
-  pub fn open_secret_with_shares(
+  pub fn recover_secret(
+    &self,
     shares: Vec<(Scalar, Scalar)>,
-  ) -> Scalar {
+  ) -> Result<Scalar,String> {
+    if shares.len() < self.coeffs.len() {
+      return Err(
+        format!("{} or more shares are required", self.coeffs.len()));
+    }
+    let shares = &shares[..self.coeffs.len()];
     let mut secret = Scalar::zero();
 
     let xs = shares.iter().map(|(x, _)| x).collect::<Vec<_>>();
@@ -101,7 +108,7 @@ impl FeldmanVss {
       );
       secret += y * lambda
     }
-    secret
+    Ok(secret)
   }
 }
 
@@ -141,19 +148,21 @@ mod tests {
   }
 
   #[test]
-  fn test_interpolation() {
-    // f(x) = 3x + 5
-    //
-    // shares:
-    // (1, 8)
-    // (3, 14)
+  fn test_recover_secret() {
+  }
 
-    let shares: Vec<(Scalar, Scalar)> = vec![
-      (1u8.into(), 8u8.into()),
-      (3u8.into(), 14u8.into()),
-    ];
-    let secret = FeldmanVss::open_secret_with_shares(shares);
-    assert_eq!(secret, 5u8.into());
+  #[test]
+  fn test_secret_recovery() {
+    for threshold in 2..=100 {
+      let secret = Scalar::rand();
+      let vss = FeldmanVss::new(&secret, threshold);
+
+      let shares: Vec<(Scalar, Scalar)> = (1..=(threshold + 1))
+        .map(|i| (Scalar::from(i as u8), vss.eval_P_at_i(i)))
+        .collect();
+      let rec_secret = vss.recover_secret(shares).unwrap();
+      assert_eq!(secret, rec_secret);
+    }
   }
 
   #[test]
@@ -171,7 +180,7 @@ mod tests {
   }
 
   #[test]
-  fn test_verify() {
+  fn test_verify_shares() {
     let secret = Scalar::rand();
     let num_shares = 100;
     let threshold = num_shares - 1;
