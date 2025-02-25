@@ -3,13 +3,9 @@
 
 use crate::building_block::pedersen_secp256k1::{
   CommitmentPair,
-  Decommitment,
   PedersenCommitment,
 };
-use crate::building_block::secp256k1::{
-  point::Point,
-  scalar::Scalar,
-};
+use crate::building_block::secp256k1::scalar::Scalar;
 
 struct GG18();
 
@@ -28,7 +24,7 @@ fn main() {
 
   // Computes [KGC_i, KGD_i] = Com(u_i * G)
   let pedersen = PedersenCommitment::new();
-  let comm_pairs: Vec<CommitmentPair> =
+  let _comm_pairs: Vec<CommitmentPair> =
     u_is.iter()
     .map(|u_i| {
       let blinding_factor = &Scalar::rand();
