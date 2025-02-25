@@ -80,6 +80,10 @@ impl Scalar {
     OsRng.fill_bytes(&mut buf);
     Scalar::from(buf)
   }
+
+  pub fn to_hex(&self) -> String {
+    "ab".to_string()
+  }
 }
 
 impl fmt::Display for Scalar {

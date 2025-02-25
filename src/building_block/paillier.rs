@@ -31,6 +31,12 @@ pub struct SecretKey {
   mu: Integer,
 }
 
+pub struct PaillierInstance {
+  pub n: Integer,
+  pub pk: PublicKey,
+  pub sk: SecretKey,
+}
+
 impl Paillier {
   // mod nn -> mod n
   fn L(u: &Integer, n: &Integer) -> Integer {
@@ -77,7 +83,7 @@ impl Paillier {
   pub fn new(
     num_bits: u32,
     g_calc_method: GCalcMethod,
-  ) -> (PublicKey, SecretKey) {
+  ) -> PaillierInstance {
     let mut rng = get_32_byte_rng();
 
     // generate distinct primes p and q
@@ -113,7 +119,12 @@ impl Paillier {
 
     let pk = PublicKey { n: n.clone(), g };
     let sk = SecretKey { lambda, mu };
-    (pk, sk)
+
+    PaillierInstance {
+      n,
+      pk,
+      sk,
+    }
   }
 
   // encrypted message is in multiplicative group modulo n^2
@@ -214,7 +225,9 @@ mod tests {
     let num_bits = 64;
 
     for _ in 0..10 {
-      let (pk, sk) = Paillier::new(num_bits, GCalcMethod::Random);
+      let inst = Paillier::new(num_bits, GCalcMethod::Random);
+      let (pk, sk) = (&inst.pk, &inst.sk);
+
       let m = gen_random_number(num_bits, &mut *rng) % &pk.n;
 
       let c = Paillier::encrypt(num_bits, &mut *rng, &m, &pk);
@@ -231,7 +244,9 @@ mod tests {
     let mut rng = get_32_byte_rng();
     let num_bits = 64;
 
-    let (pk, sk) = Paillier::new(num_bits, GCalcMethod::Random);
+    let inst = Paillier::new(num_bits, GCalcMethod::Random);
+    let (pk, sk) = (&inst.pk, &inst.sk);
+
     let m1 = gen_random_number(num_bits, &mut *rng) % &pk.n;
     let m2 = gen_random_number(num_bits, &mut *rng) % &pk.n;
 

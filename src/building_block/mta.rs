@@ -153,7 +153,8 @@ impl MtA {
   }
 
   pub fn new(num_bits: u32) -> MtA {
-    let (pk, sk) = Paillier::new(num_bits, GCalcMethod::Random);
+    let inst = Paillier::new(num_bits, GCalcMethod::Random);
+    let (pk, sk) = (inst.pk, inst.sk);
     let q = Self::calc_q(&pk.n);
     let q3 = &q.clone().pow(3);
     let q5 = &q.clone().pow(5);
