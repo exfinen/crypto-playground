@@ -56,11 +56,12 @@ impl FeldmanVss {
     coeff_hidings: &Vec<Point>,
   ) -> Point {
     let mut x = Scalar::from(i);
+    let i = Scalar::from(i);
     let mut res = coeff_hidings[0].clone(); 
 
     for coeff_hiding in &coeff_hidings[1..] {
       res += coeff_hiding * x;
-      x *= x;
+      x *= i;
     }
     res
   }
@@ -186,6 +187,7 @@ mod tests {
 
     // verify that all parties received a valid share
     for i in 1..=num_shares {
+      println!("Verifying share {}", i);
       let P = Point::from(vss.eval_P_at_i(i));
       let P_recovered =
         FeldmanVss::eval_P_at_i_with_coeff_hidings(i, &coeff_hidings);

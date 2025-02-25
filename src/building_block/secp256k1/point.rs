@@ -24,7 +24,7 @@ extern "C" {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct Point { // using 5x52 expecting 64-bit arch
+pub struct Point { // using 5x52 assuming 64-bit arch
   x: [u64; 5], 
   y: [u64; 5],
   z: [u64; 5],

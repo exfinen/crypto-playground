@@ -43,7 +43,7 @@ extern "C" {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct Scalar { // using 4x64 expecting 64-bit arch
+pub struct Scalar { // using 4x64 assuming 64-bit arch
   d: [u64; 4],
 }
 

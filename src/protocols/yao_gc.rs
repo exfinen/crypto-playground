@@ -75,7 +75,7 @@ impl<'a> P2<'a> {
     circuit: &'a Circuit,
     inputs: Vec<Input>,
     p1_input_len: usize,
-  ) -> P2 {
+  ) -> P2<'a> {
     let ot_keys = P2::gen_ot_keys();
     let circuit_inputs: Vec<WireLabel> = vec![
       WireLabel::default(); 
