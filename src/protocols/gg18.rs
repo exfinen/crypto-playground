@@ -170,7 +170,6 @@ fn main() {
   assert_eq!(G * p2_of_3, U2 + A2 * &three);
   assert_eq!(G * p3_of_3, U3 + A3 * &three);
 
-
   // Calculate shard private key
   let x3 = p1_of_3 + p2_of_3 + p3_of_3;
 
@@ -219,72 +218,75 @@ fn main() {
   let num_bits = 256;
   let mut rng = get_32_byte_rng();
 
-  // MtA 1 (P1 holds Paillier private key):
-  // k_1, gamma_2 -> k_1 * gamma_2
-  let k_1_gamma_2 = {
-    let mta = MtA::new(num_bits);
+  // MtAs wth P1's Paillier public key:
+  let (k_1_gamma_2, k_1, omega_2) = {
+    // k_1, gamma_2 -> k_1 * gamma_2
+    let k_1_gamma_2 = {
+      let mta = MtA::new(num_bits);
 
-    let mut alice = Alice::new(&k_1);
-    let mut bob = Bob::new(&gamma_2);
+      let mut alice = Alice::new(&k_1);
+      let mut bob = Bob::new(&gamma_2);
 
-    let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
-    let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
+      let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
+      let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
 
-    alice.calc_alpha(&c_b, &mta);
-    let alpha = alice.alpha.clone().unwrap();
-    let beta = bob.beta.clone().unwrap();
-    alpha + beta
+      alice.calc_alpha(&c_b, &mta);
+      let alpha = alice.alpha.clone().unwrap();
+      let beta = bob.beta.clone().unwrap();
+      alpha + beta
+    };
+
+    // k_1, omega_2 -> k_1 * omega_2
+    let k_1_omega_2 = {
+      let mta = MtA::new(num_bits);
+
+      let mut alice = Alice::new(&k_1);
+      let mut bob = Bob::new(&omega_2);
+
+      let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
+      let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
+
+      alice.calc_alpha(&c_b, &mta);
+      let alpha = alice.alpha.clone().unwrap();
+      let beta = bob.beta.clone().unwrap();
+      alpha + beta
+    };
+    (k_1_omega_2, k_1, omega_2)
   };
 
-  // MtA 2 (P1 holds Paillier private key):
-  // k_1, omega_2 -> k_1 * omega_2
-  let k_1_omega_2 = {
-    let mta = MtA::new(num_bits);
 
-    let mut alice = Alice::new(&k_1);
-    let mut bob = Bob::new(&omega_2);
+  // MtAs with P2's Pailier public key:
+  let (k_2_gamma_1, k_2_omega_1) = {
+    let k_2_gamma_1 = {
+      let mta = MtA::new(num_bits);
 
-    let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
-    let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
+      let mut alice = Alice::new(&k_2);
+      let mut bob = Bob::new(&gamma_1);
 
-    alice.calc_alpha(&c_b, &mta);
-    let alpha = alice.alpha.clone().unwrap();
-    let beta = bob.beta.clone().unwrap();
-    alpha + beta
-  };
+      let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
+      let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
 
-  // MtA 3 (P2 holds Paillier private key):
-  // k_2, gamma_1 -> k_2 * gamma_1
-  let k_2_gamma_1 = {
-    let mta = MtA::new(num_bits);
+      alice.calc_alpha(&c_b, &mta);
+      let alpha = alice.alpha.clone().unwrap();
+      let beta = bob.beta.clone().unwrap();
+      alpha + beta
+    };
+   
+    let k_2_omega_1 = {
+      let mta = MtA::new(num_bits);
 
-    let mut alice = Alice::new(&k_2);
-    let mut bob = Bob::new(&gamma_1);
+      let mut alice = Alice::new(&k_2);
+      let mut bob = Bob::new(&omega_1);
 
-    let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
-    let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
+      let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
+      let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
 
-    alice.calc_alpha(&c_b, &mta);
-    let alpha = alice.alpha.clone().unwrap();
-    let beta = bob.beta.clone().unwrap();
-    alpha + beta
-  };
- 
-  // MtA 4 (P2 holds Paillier private key):
-  // k_2, omega_1 -> k_2 * omega_1
-  let k_2_omega_1 = {
-    let mta = MtA::new(num_bits);
-
-    let mut alice = Alice::new(&k_2);
-    let mut bob = Bob::new(&omega_1);
-
-    let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
-    let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
-
-    alice.calc_alpha(&c_b, &mta);
-    let alpha = alice.alpha.clone().unwrap();
-    let beta = bob.beta.clone().unwrap();
-    alpha + beta
+      alice.calc_alpha(&c_b, &mta);
+      let alpha = alice.alpha.clone().unwrap();
+      let beta = bob.beta.clone().unwrap();
+      alpha + beta
+    };
+    (k_2_gamma_1, k_2_omega_1)
   };
 
   /// Player 1
@@ -297,12 +299,26 @@ fn main() {
 
   //// Phase 3
   
-  // P_1 and P_2 broadcasy delta_1 and delta_2 respectively
+  // P_1 and P_2 broadcast delta_1 and delta_2 respectively
   // and both calculate delta and then the inverse of delta
   let delta = &delta_1 + &delta_2;
   let delta_inv = delta.inv().unwrap(); // TODO mod by group order
 
   //// Phase 4
+
+  // P_1 and P_2 decommit gamma_1*G and gamma_2*G respectively and broadcast
+  let gamma_1_g = comm_pair_1.decomm.m;
+  // TODO assert that gamma_1_g + comm_pair_1.decomm.r * h == comm_pair_1.comm
+ 
+  let gamma_2_g = comm_pair_2.decomm.m;
+  // TODO assert that gamma_2_g + comm_pair_2.decomm.r * h == comm_pair_2.comm
+
+  // R = k^-1 * G 
+  let R = delta_inv * (gamma_1_g + gamma_2_g);
+ 
+  // TODO get the x-coordinate of R r_x properly
+  let r_x = R;
+  let r = r_x; // TODO mod by group order
 
   //// Phase 5
 }
