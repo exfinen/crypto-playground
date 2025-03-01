@@ -8,12 +8,12 @@ use crate::building_block::secp256k1::{
 
 #[derive(Debug, Copy, Clone)]
 pub struct Decommitment {
-  m: Scalar,
-  r: Scalar,
+  pub m: Point,
+  pub r: Scalar,
 }
 
 impl Decommitment {
-  pub fn new(m: &Scalar, r: &Scalar) -> Self {
+  pub fn new(m: &Point, r: &Scalar) -> Self {
     Self {
       m: m.clone(),
       r: r.clone(),
@@ -23,8 +23,8 @@ impl Decommitment {
 
 #[derive(Debug, Copy, Clone)]
 pub struct CommitmentPair {
-  comm: Point,
-  decomm: Decommitment,
+  pub comm: Point,
+  pub decomm: Decommitment,
 }
 
 impl CommitmentPair {
@@ -61,8 +61,9 @@ impl PedersenCommitment {
     secret: &Scalar,
     blinding_factor: &Scalar,
   ) -> CommitmentPair {
-    let comm = &self.g * secret + &self.h * blinding_factor;
-    let decomm = Decommitment::new(secret, blinding_factor);
+    let U_i = &self.g * secret;
+    let comm = &U_i + &self.h * blinding_factor;
+    let decomm = Decommitment::new(&U_i, blinding_factor);
 
     CommitmentPair::new(comm, decomm)
   }
