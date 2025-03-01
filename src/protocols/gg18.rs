@@ -316,11 +316,28 @@ fn main() {
   // R = k^-1 * G 
   let R = delta_inv * (gamma_1_g + gamma_2_g);
  
-  // TODO get the x-coordinate of R r_x properly
-  let r_x = R;
+  let r_x = Scalar::from(45u8); // TODO get the x-coordinate of R r_x instead
+
   let r = r_x; // TODO mod by group order
 
   //// Phase 5
+
+  // TODO hash message instead
+  let m = Scalar::from(12u8);
+
+  /// Player 1
+  // calculate s_1 = m * k_1 + r * sigma_1
+  let s_1 = m * k_1 + r * signa_1;
+
+  /// Player 2
+  // calculate s_2 = m * k_2 + r * sigma_2
+  let s_2 = m * k_2 + r * signa_2;
+
+  // TODO take commit-open-verify steps before sharing s_1 and s_2
+  let s = &s_1 + &s_2; 
+
+  // signature is (r, s)
+  // TODO verify signature. fails if signature is invalid
 }
 
 

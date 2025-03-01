@@ -7,7 +7,8 @@ Implemented:
   - Paillier Cryptosystem
   - MtA (w/o Range Proofs)
   - Feldman VSS
+  - GG18 (w/o Range Proofs and zk)
 
 Implementing:
-- GG18
+- zk and range proofs for GG18
 
