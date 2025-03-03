@@ -41,6 +41,10 @@ impl Point {
     }
   }
 
+  pub fn point_at_infinity() -> Self {
+    Self::new()
+  }
+
   pub fn get_base_point() -> Self {
     let mut p = Self::new();
     unsafe {
@@ -178,6 +182,17 @@ impl PartialEq for Point {
   }
 }
 impl Eq for Point {} // Point has total equality
+
+impl PartialEq for &Point {
+  fn eq(&self, rhs: Self) -> bool {
+    let r;
+    unsafe {
+      r = group_eq(self, rhs);
+    }
+    r != 0
+  }
+}
+impl Eq for &Point {} // Point has total equality
 
 #[cfg(test)]
 mod tests {

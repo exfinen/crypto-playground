@@ -38,7 +38,7 @@ pub fn xor_vecs(v1: &Vec<u8>, v2: &Vec<u8>) -> Vec<u8> {
     .collect()
 }
 
-pub fn get_32_byte_rng() -> Box<dyn MutRandState> {
+pub fn get_32_byte_rng<'a>() -> RandState<'a> {
   let mut rng = RandState::new();
   let seed = {
     let mut random_bytes = [0u8; 32];
@@ -46,7 +46,7 @@ pub fn get_32_byte_rng() -> Box<dyn MutRandState> {
     Integer::from_digits(&random_bytes, rug::integer::Order::Msf)
   };
   rng.seed(&seed);
-  Box::new(rng)
+  rng
 }
 
 pub fn gen_random_number(

@@ -2,8 +2,11 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-use rug::ops::Pow;
-use rug::Complete;
+use rug::{
+  ops::Pow,
+  Complete,
+  rand::RandState,
+};
 use rug::{
   Integer,
   rand::MutRandState,
@@ -14,122 +17,113 @@ use crate::building_block::paillier::{
   PublicKey,
   SecretKey,
 };
-use crate::building_block::util::gen_random_number;
+use crate::building_block::util::{
+  gen_random_number,
+  get_32_byte_rng,
+};
 
 pub struct Alice {
-  a: Integer, // additive share
-  alpha: Option<Integer>, // multiplicative share
-}
-
-pub struct Bob {
-  b: Integer, // additive share
-  beta: Option<Integer>, // multiplicative share
-}
-
-pub struct C_a_RangeProof {
-  value: Integer,
-  range_proof_a: Integer,
-}
-
-pub struct C_b_RangeProofs {
-  value: Integer,
-  range_proof_b: Integer,
-  range_proof_beta_prime: Integer,
+  pub c_a: Integer,
+  pub rp_a_lt_q3: Integer,
+  pub pk: PublicKey,
+  pub sk: SecretKey,
 }
 
 impl Alice {
-  pub fn new(a: &Integer) -> Alice {
+  pub fn new(
+    num_bits: u32,
+    a: &Integer,
+    rng: &mut dyn MutRandState,
+  ) -> Alice {
+    let inst = Paillier::new(num_bits, GCalcMethod::Random);
+    let (pk, sk) = (inst.pk, inst.sk);
+
+    let c_a = Paillier::encrypt(
+      num_bits, &mut *rng, a, &pk
+    );
+
+    // TODO implement range proof of a < q^3
+    let rp_a_lt_q3 = Integer::ZERO;
+
     Alice {
-      a: a.clone(),
-      alpha: None,
+      c_a,
+      rp_a_lt_q3,
+      pk,
+      sk,
     }
   }
 
   pub fn calc_alpha(
-    &mut self,
-    c_b: &C_b_RangeProofs,
-    mta: &MtA,
-  ) -> () {
-    // TODO check if c_b's range proofs are valid here
+    &self,
+    c_b: &Integer,
+    _rp_b_lt_q3: &Integer,
+    _rp_b_lt_q3_bp_le_q7: &Integer,
+  ) -> Option<Integer> {
+    // TODO check if given range proofs are valid
  
     // alice decrypts c_b to get alpha = ab + beta'
-    let alpha = Paillier::decrypt(&c_b.value, &mta.sk, &mta.pk);
-    self.alpha = Some(alpha);
-  }
-
-  pub fn calc_c_a(
-    &mut self,
-    num_rand_bits: u32,
-    mta: &MtA,
-    rng: &mut dyn MutRandState,
-  ) -> C_a_RangeProof {
-    let c_a = Paillier::encrypt(
-      num_rand_bits, &mut *rng, &self.a, &mta.pk
-    );
-
-    // range proof of a < q^3
-    let range_proof_a = Integer::ZERO; // TODO implement this
-
-    C_a_RangeProof {
-      value: c_a,
-      range_proof_a,
-    }
+    let alpha = Paillier::decrypt(c_b, &self.sk, &self.pk);
+    Some(alpha)
   }
 }
 
-impl Bob {
-  pub fn new(b: &Integer) -> Bob {
-    Bob {
-      b: b.clone(),
-      beta: None,
-    }
-  }
+pub struct Bob {
+  pub c_b: Integer,
+  pub beta: Integer,
+  pub rp_b_lt_q3: Integer, // b < q^3
+  pub rp_b_lt_q3_bp_le_q7: Integer, // b < q^3 and beta' < q^7(q^5?)
+}
 
-  pub fn calc_c_b_and_beta(
-    &mut self,
-    c_a: &C_a_RangeProof,
+impl Bob {
+  pub fn new(
+    b: &Integer,
+    c_a: &Integer,
+    _rp_a_lt_q3: &Integer,
+    pk: &PublicKey,
     mta: &MtA,
-    rng: &mut dyn MutRandState,
-  ) -> C_b_RangeProofs {
-    // TODO check if range proof of c_a is valid here
-  
+  ) -> Bob {
+    // TODO check if range proof of c_a is valid
+    
+    let mut rng = get_32_byte_rng();
+
+    // choose beta' uniformly at random in Z_q^5
     let beta_prime = gen_random_number(
       mta.q5.significant_bits(),
-      &mut *rng,
+      &mut rng,
     );
+
     let c_beta_prime = Paillier::encrypt(
-      mta.pk.n.significant_bits(),
-      &mut *rng,
+      pk.n.significant_bits(),
+      &mut rng,
       &beta_prime,
-      &mta.pk,
+      pk,
     );
 
     // c_b = ENC(ab) + c_beta'
     let c_b = {
       let c_a_times_b = Paillier::scalar_mul(
-        &c_a.value,
-        &self.b,
-        &mta.pk,
+        &c_a,
+        b,
+        pk,
       );
-      Paillier::add(&c_a_times_b, &c_beta_prime, &mta.pk)
+      Paillier::add(&c_a_times_b, &c_beta_prime, pk)
     };
 
     // beta in Z_q
-    self.beta = Some({
+    let beta = {
       let neg_beta_prime = (&beta_prime * -1i8).complete() % &mta.q;
       &mta.q + neg_beta_prime
-    });
+    };
 
-    // beta' is in Z_q^5
-    // b < q^3 and beta' < q^7
     // TODO implement this
-    let range_proof_b = Integer::ZERO; // TODO implement this
-    let range_proof_beta_prime = Integer::ZERO; // TODO implement this
+    let rp_b_lt_q3 = Integer::ZERO; // beta' is in Z_q^5
+    let rp_b_lt_q3_bp_le_q7 = Integer::ZERO; // b < q^3 and beta' < q^7
 
-    C_b_RangeProofs {
-      value: c_b,
-      range_proof_b,
-      range_proof_beta_prime,
+    Bob {
+      c_b,
+      beta,
+      rp_b_lt_q3,
+      rp_b_lt_q3_bp_le_q7,
     }
   }
 }
@@ -138,8 +132,6 @@ pub struct MtA {
   pub q: Integer,
   pub q3: Integer, // q^3
   pub q5: Integer, // q^5
-  pub pk: PublicKey,
-  pub sk: SecretKey,
 }
 
 impl MtA {
@@ -152,18 +144,15 @@ impl MtA {
     q
   }
 
-  pub fn new(num_bits: u32) -> MtA {
-    let inst = Paillier::new(num_bits, GCalcMethod::Random);
-    let (pk, sk) = (inst.pk, inst.sk);
-    let q = Self::calc_q(&pk.n);
+  pub fn new(n: &Integer) -> MtA {
+    let q = Self::calc_q(n);
     let q3 = &q.clone().pow(3);
     let q5 = &q.clone().pow(5);
+
     MtA {
       q,
       q3: q3.clone(),
       q5: q5.clone(),
-      pk,
-      sk,
     }
   }
 }
@@ -171,35 +160,36 @@ impl MtA {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::building_block::util::get_32_byte_rng;
 
   #[test]
   fn test_mta() {
-    let num_bits = 64;
-    let mta = MtA::new(num_bits);
+    let num_bits = 256u32; // assuming secp256k1 case
+    let alice = Alice::new(num_bits, &Integer::from(2), &mut get_32_byte_rng());
+    let mta = MtA::new(&alice.pk.n);
     let mut rng = get_32_byte_rng();
 
-    let a = gen_random_number(mta.q3.significant_bits(), &mut *rng);
-    let mut alice = Alice::new(&a);
+    let a = gen_random_number(mta.q3.significant_bits(), &mut rng);
+    let alice = Alice::new(
+      alice.pk.n.significant_bits(),
+      &a,
+      &mut rng,
+    );
 
-    let b = gen_random_number(mta.q3.significant_bits(), &mut *rng);
-    let mut bob = Bob::new(&b);
+    let b = gen_random_number(mta.q3.significant_bits(), &mut rng);
+    let bob = Bob::new(
+      &b,
+      &alice.c_a,
+      &alice.rp_a_lt_q3,
+      &alice.pk,
+      &mta,
+    );
 
-    // alice calculates c_a and range proof of a
-    let c_a = alice.calc_c_a(num_bits, &mta, &mut *rng);
-
-    // bob recieves c_a from alice and checks if the range_proof 
-    // is valid. then bob calculates c_b, range proofs and beta
-    let c_b = bob.calc_c_b_and_beta(&c_a, &mta, &mut *rng);
-
-    // alice receives c_b from bob and checks if range_proof of b 
-    // and beta' are valid. then alice decrypts c_b to get alpha
-    alice.calc_alpha(&c_b, &mta);
-
-    // now a and b are multiplicatively shared between alice and bob
-    // as alpha and beta respectively
-    let alpha = alice.alpha.clone().unwrap();
-    let beta = bob.beta.clone().unwrap();
+    let alpha = alice.calc_alpha(
+      &bob.c_b,
+      &bob.rp_b_lt_q3,
+      &bob.rp_b_lt_q3_bp_le_q7,
+    );
+    let alpha = alpha.expect("Failed to decrypt c_b");
 
     println!("q: {}", &mta.q);
 
@@ -209,8 +199,8 @@ mod tests {
     println!("ab: {}", ab);
 
     println!("alpha: {}", &alpha);
-    println!("beta: {}", &beta);
-    let alpha_plus_beta = (alpha + beta) % &mta.q;
+    println!("beta: {}", &bob.beta);
+    let alpha_plus_beta = (alpha + &bob.beta) % &mta.q;
     println!("alpha_plus_beta: {}", alpha_plus_beta);
 
     assert_eq!(ab, alpha_plus_beta);

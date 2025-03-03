@@ -11,6 +11,10 @@ use rand::{
   rngs::OsRng,
   RngCore,
 };
+use rug::{
+  integer::Order,
+  Integer,
+};
 
 extern "C" {
   #[link_name = "secp256k1_export_scalar_set_int"]
@@ -142,6 +146,29 @@ impl From<[u8; 32]> for Scalar {
     let mut s = Scalar::new();
     unsafe {
       scalar_set_b32(&mut s, buf.as_ptr());
+    }
+    s
+  }
+}
+
+impl From<&Integer> for Scalar {
+  fn from(i: &Integer) -> Self {
+    let mut s = Scalar::new();
+    let mut buf = i.to_digits::<u8>(Order::MsfBe);
+    
+    // make buf 32 bytes
+    if buf.len() > 32 {
+      buf.drain(0..(buf.len() - 32));
+    } else if buf.len() < 32 {
+      let mut padded_buf = vec![0u8; 32 - buf.len()];
+      padded_buf.extend_from_slice(&buf);
+      buf = padded_buf;
+    }
+    
+    let mut buf_array = [0u8; 32];
+    buf_array.copy_from_slice(&buf);
+    unsafe {
+      scalar_set_b32(&mut s, buf_array.as_ptr());
     }
     s
   }

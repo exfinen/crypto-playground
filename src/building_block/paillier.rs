@@ -19,6 +19,7 @@ pub enum GCalcMethod {
 
 pub struct Paillier();
 
+#[derive(Clone, Debug)]
 pub struct PublicKey {
   pub n: Integer,
   pub g: Integer,
