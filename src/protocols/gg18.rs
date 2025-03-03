@@ -166,107 +166,7 @@ impl KeyGenPlayer {
   }
 }
 
-// returns a Paillier instance that supports the full range of 256-bit integers
-fn get_seck256k1_paillier() -> PaillierInstance {
-  let max_256_bits = Integer::u_pow_u(2, 256).complete() - Integer::ONE;
-  loop {
-    let inst = Paillier::new(256, GCalcMethod::Random);
-    if inst.n > max_256_bits {
-      return inst
-    }
-  }
-}
-
-fn generate_keys(
-  num_players: usize,
-) {
-  ////// Prepare
-
-  // Player 1
-  let a1 = Scalar::rand();
-  let p1 = |x: u8| { u_is[0] + a1 * Scalar::from(x) };
-  let A1 = G * a1;
-
-  let p1_of_1 = p1(1);
-  let p1_of_2 = p1(2); // send to Player 2
-  let p1_of_3 = p1(3); // send to Player 3
-
-  // Player 2
-  let a2 = Scalar::rand();
-  let p2 = |x: u8| { u_is[1] + a2 * Scalar::from(x) };
-  let A2 = G * a2;
-
-  let p2_of_1 = p2(1); // send to Player 1
-  let p2_of_2 = p2(2);
-  let p2_of_3 = p2(3); // send to Player 3
-
-  // Player 3
-  let a3 = Scalar::rand();
-  let p3 = |x: u8| { u_is[2] + a3 * Scalar::from(x) };
-  let A3 = G * a3;
-
-  let p3_of_1 = p3(1); // send to Player 1
-  let p3_of_2 = p3(2); // send to Player 2
-  let p3_of_3 = p3(3);
-
-  ////// Private data
-
-  //// Player 1
-
-  // Veify
-  assert_eq!(G * p1_of_1, U1 + A1);
-  assert_eq!(G * p2_of_1, U2 + A2);
-  assert_eq!(G * p3_of_1, U3 + A3);
-
-  // Calculate shard private key
-  let x1 = p1_of_1 + p2_of_1 + p3_of_1;
-
-  // Calculate shared public key
-  let X1 = &PK + &A1 + &A2 + &A3;
-
-  //// Player 2
-
-  // Verify
-  let two = Scalar::from(2u8);
-  assert_eq!(G * p1_of_2, U1 + A1 * &two);
-  assert_eq!(G * p2_of_2, U2 + A2 * &two);
-  assert_eq!(G * p3_of_2, U3 + A3 * &two);
-
-  // Calculate shard private key
-  let x2 = p1_of_2 + p2_of_2 + p3_of_2;
-
-  // Calculate shared public key
-  let X2 = &PK + &A1 * &two + &A2 * &two + &A3 * &two;
-
-  //// Player 3
-
-  // Verify
-  let three = Scalar::from(3u8);
-  assert_eq!(G * p1_of_3, U1 + A1 * &three);
-  assert_eq!(G * p2_of_3, U2 + A2 * &three);
-  assert_eq!(G * p3_of_3, U3 + A3 * &three);
-
-  // Calculate shard private key
-  let x3 = p1_of_3 + p2_of_3 + p3_of_3;
-
-  // Calculate shared public key
-  let X3 = &PK + &A1 * &three +j &A2 * &three + &A3 * &three;
-
-  ///// Use Lagrange interpolation to recover PK and sk by
-  ///// Player 1 and Player 2
-
-  // i = 1, j = 2
-  let calc_lambda_i_j = |i, j| { j / (j - i) };
-  let calc_lambda_j_i = |i, j| { i - j };
-  let lambda_i_j = calc_lambda_i_j(1, 2); // lamb Scalar::from(2);
-  let lambda_j_i = calc_lambda_j_i(1, 2); // Scalar::from(1).inv();
-
-  let omega_1 = lambda_i_j * x1;
-  let omega_2 = lambda_j_i * x2;
-}
-
-
-pub fn gen_keys(num_players: usize) -> Result<(), &'static str> {
+pub fn gen_keys(num_players: usize) -> Result<Vec<KeyGenPlayer, &'static str> {
   let q = Integer::from(123u8); // TODO change to secp256k1 base field order
 
   // Phase 1
@@ -318,15 +218,24 @@ pub fn gen_keys(num_players: usize) -> Result<(), &'static str> {
 
   // Phase 3 (TO BE IMPLEMENTED)
 
-  Ok(())
+  Ok(players)
 }
 
 pub fn sign(
   m: Vec<u8>, // message to sign
-  players: Vec<usize>, // players that participate in the signing
-  omega_1: Scalar,
-  omega_2: Scalar,
+  players: &Vec<KeyGenPlayers>, // players that participate in the signing
 ) -> Signature {
+  ///// Use Lagrange interpolation to recover PK and sk by
+  ///// Player 1 and Player 2
+
+  // i = 1, j = 2
+  let calc_lambda_i_j = |i, j| { j / (j - i) };
+  let calc_lambda_j_i = |i, j| { i - j };
+  let lambda_i_j = calc_lambda_i_j(1, 2); // lamb Scalar::from(2);
+  let lambda_j_i = calc_lambda_j_i(1, 2); // Scalar::from(1).inv();
+
+  let omega_1 = lambda_i_j * x1;
+  let omega_2 = lambda_j_i * x2;
   // // Phase 1
   // let pedersen = PedersenCommitment::new();
   // 
@@ -505,9 +414,9 @@ mod tests {
 
   #[test]
   fn test_gen_sig() {
-    let keys = gen_keys(3);
+    let players = gen_keys(3);
     let m = "test";
-    let _sig = sign(&m, vec![0, 1], &keys);
+    let _sig = sign(&m,  &players);
   }
 }
 
