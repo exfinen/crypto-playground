@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+use serde::Deserialize;
+
 use crate::building_block::{
   paillier::{
     GCalcMethod,
@@ -154,6 +156,28 @@ impl Party {
       );
       self.network.unicast(&dest, &result.serialize()).await;
     }
+
+    // receive p_i from other parties
+    let p_is = {
+      let mut p_is = vec![];
+      for i in 0..self.num_parties {
+        if i == self.party_id {
+          let p_i = p_i(i + 1);
+          p_is.push(p_i);
+        } else {
+          let dest = UnicastDest::new(
+            P_I_UNICAST,
+            i,
+            self.party_id,
+          );
+          let ser_p_i: Vec<u8> = self.network.receive_unicast(&dest).await;
+          let p_i = Scalar::deserialize(&ser_p_i).unwrap();
+          p_is.push(p_i);
+        }
+      }
+      p_is
+    };
+
   }
 
   // // using Feldman VSS, verify that the same polynomial is used

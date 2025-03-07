@@ -101,6 +101,17 @@ impl Scalar {
     }
     buf.to_vec()
   }
+
+  pub fn deserialize(buf: &[u8]) -> Result<Self, String> {
+    if buf.len() != 32 {
+      return Err("Serialized Scalar should be 32-byte long".to_string());
+    }
+    let mut s = Scalar::new();
+    unsafe {
+      scalar_set_b32(&mut s, buf.as_ptr());
+    }
+    Ok(s)
+  }
 }
 
 impl fmt::Display for Scalar {
