@@ -11,6 +11,7 @@ rsa = "0.9.7"
 rug = "1.27"
 serde = { version = "1.0.216", features = ["derive"] }
 sha3 = "0.10"
+tokio = { version = "1", features = ["full"] }
 
 [build-dependencies]
 cc = "1.2.12"

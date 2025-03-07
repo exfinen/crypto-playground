@@ -5,12 +5,8 @@
 use rug::{
   ops::Pow,
   Complete,
-  rand::RandState,
 };
-use rug::{
-  Integer,
-  rand::MutRandState,
-};
+use rug::Integer;
 use crate::building_block::paillier::{
   GCalcMethod,
   Paillier,
@@ -33,15 +29,14 @@ impl Alice {
   pub fn new(
     num_bits: u32,
     a: &Integer,
-    rng: &mut dyn MutRandState,
   ) -> Alice {
     let inst = Paillier::new(num_bits, GCalcMethod::Random);
     let (pk, sk) = (inst.pk, inst.sk);
+    let mut rng = get_32_byte_rng();
 
     let c_a = Paillier::encrypt(
-      num_bits, &mut *rng, a, &pk
+      num_bits, &mut rng, a, &pk
     );
-
     // TODO implement range proof of a < q^3
     let rp_a_lt_q3 = Integer::ZERO;
 
@@ -59,7 +54,7 @@ impl Alice {
     _rp_b_lt_q3: &Integer,
     _rp_b_lt_q3_bp_le_q7: &Integer,
   ) -> Option<Integer> {
-    // TODO check if given range proofs are valid
+    // TODO check if the two range proofs are valid
  
     // alice decrypts c_b to get alpha = ab + beta'
     let alpha = Paillier::decrypt(c_b, &self.sk, &self.pk);
@@ -76,19 +71,19 @@ pub struct Bob {
 
 impl Bob {
   pub fn new(
-    b: &Integer,
     c_a: &Integer,
-    _rp_a_lt_q3: &Integer,
+    q: &Integer, // paillier q
     pk: &PublicKey,
-    mta: &MtA,
+    _rp_a_lt_q3: &Integer,
+    b: &Integer,
   ) -> Bob {
     // TODO check if range proof of c_a is valid
     
     let mut rng = get_32_byte_rng();
-
+    let q5 = q.pow(5).complete();
     // choose beta' uniformly at random in Z_q^5
     let beta_prime = gen_random_number(
-      mta.q5.significant_bits(),
+      q5.significant_bits(),
       &mut rng,
     );
 
@@ -111,8 +106,8 @@ impl Bob {
 
     // beta in Z_q
     let beta = {
-      let neg_beta_prime = (&beta_prime * -1i8).complete() % &mta.q;
-      &mta.q + neg_beta_prime
+      let neg_beta_prime = (&beta_prime * -1i8).complete() % q;
+      q + neg_beta_prime
     };
 
     // TODO implement this
@@ -164,7 +159,7 @@ mod tests {
   #[test]
   fn test_mta() {
     let num_bits = 256u32; // assuming secp256k1 case
-    let alice = Alice::new(num_bits, &Integer::from(2), &mut get_32_byte_rng());
+    let alice = Alice::new(num_bits, &Integer::from(2));
     let mta = MtA::new(&alice.pk.n);
     let mut rng = get_32_byte_rng();
 
@@ -172,16 +167,15 @@ mod tests {
     let alice = Alice::new(
       alice.pk.n.significant_bits(),
       &a,
-      &mut rng,
     );
 
     let b = gen_random_number(mta.q3.significant_bits(), &mut rng);
     let bob = Bob::new(
-      &b,
       &alice.c_a,
-      &alice.rp_a_lt_q3,
+      &mta.q,
       &alice.pk,
-      &mta,
+      &alice.rp_a_lt_q3,
+      &b,
     );
 
     let alpha = alice.calc_alpha(

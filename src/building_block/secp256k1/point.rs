@@ -7,6 +7,10 @@ use std::{
   cmp::PartialEq,
 };
 use crate::building_block::secp256k1::scalar::Scalar;
+use serde::{
+  Serialize,
+  Deserialize,
+};
 
 extern "C" {
   #[link_name = "secp256k1_export_group_add"]
@@ -23,7 +27,7 @@ extern "C" {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Point { // using 5x52 assuming 64-bit arch
   x: [u64; 5], 
   y: [u64; 5],
@@ -55,6 +59,14 @@ impl Point {
 
   pub fn get_point_at_infinity() -> Self {
     Self::new()
+  }
+
+  pub fn serialize(&self) -> Vec<u8> {
+    bincode::serialize(self).unwrap()
+  }
+
+  pub fn deserialize(bytes: &[u8]) -> Self {
+    bincode::deserialize(bytes).unwrap()
   }
 }
 
@@ -182,17 +194,6 @@ impl PartialEq for Point {
   }
 }
 impl Eq for Point {} // Point has total equality
-
-impl PartialEq for &Point {
-  fn eq(&self, rhs: Self) -> bool {
-    let r;
-    unsafe {
-      r = group_eq(self, rhs);
-    }
-    r != 0
-  }
-}
-impl Eq for &Point {} // Point has total equality
 
 #[cfg(test)]
 mod tests {

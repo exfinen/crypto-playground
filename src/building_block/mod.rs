@@ -6,7 +6,6 @@ pub mod gates;
 pub mod gate_model;
 pub mod garbled_table;
 pub mod gate_type;
-pub mod gg18_hub;
 pub mod mta;
 pub mod ot;
 pub mod output_decoding_table;

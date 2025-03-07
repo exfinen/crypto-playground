@@ -86,7 +86,16 @@ impl Scalar {
   }
 
   pub fn to_hex(&self) -> String {
+    // TODO implement this
     "ab".to_string()
+  }
+
+  pub fn serialize(&self) -> Vec<u8> {
+    let mut buf = [0u8; 32];
+    unsafe {
+      scalar_get_b32(buf.as_mut_ptr(), self);
+    }
+    buf.to_vec()
   }
 }
 
@@ -171,6 +180,13 @@ impl From<&Integer> for Scalar {
       scalar_set_b32(&mut s, buf_array.as_ptr());
     }
     s
+  }
+}
+
+impl From<Scalar> for Integer {
+  fn from(s: Scalar) -> Self {
+    let buf = s.serialize();
+    Integer::from_digits(&buf, Order::MsfBe)
   }
 }
 

@@ -88,9 +88,9 @@ impl Paillier {
     let mut rng = get_32_byte_rng();
 
     // generate distinct primes p and q
-    let p = gen_random_prime(num_bits, &mut *rng);
+    let p = gen_random_prime(num_bits, &mut rng);
     let q = loop {
-      let q = gen_random_prime(num_bits, &mut *rng);
+      let q = gen_random_prime(num_bits, &mut rng);
       if &p != &q {
         break q;
       }
@@ -106,7 +106,7 @@ impl Paillier {
     let (g, mu) = {
       loop {
         let g = Self::calc_g(
-          num_bits, &mut *rng, &g_calc_method, &n, &nn,
+          num_bits, &mut rng, &g_calc_method, &n, &nn,
         );
         let g_lambda = g.clone().pow_mod(&lambda, &nn).unwrap();
         let k = Self::L(&g_lambda, &n);
@@ -229,9 +229,9 @@ mod tests {
       let inst = Paillier::new(num_bits, GCalcMethod::Random);
       let (pk, sk) = (&inst.pk, &inst.sk);
 
-      let m = gen_random_number(num_bits, &mut *rng) % &pk.n;
+      let m = gen_random_number(num_bits, &mut rng) % &pk.n;
 
-      let c = Paillier::encrypt(num_bits, &mut *rng, &m, &pk);
+      let c = Paillier::encrypt(num_bits, &mut rng, &m, &pk);
       let m_prime = Paillier::decrypt(&c, &sk, &pk);
       assert_eq!(m, m_prime);
 
@@ -248,11 +248,11 @@ mod tests {
     let inst = Paillier::new(num_bits, GCalcMethod::Random);
     let (pk, sk) = (&inst.pk, &inst.sk);
 
-    let m1 = gen_random_number(num_bits, &mut *rng) % &pk.n;
-    let m2 = gen_random_number(num_bits, &mut *rng) % &pk.n;
+    let m1 = gen_random_number(num_bits, &mut rng) % &pk.n;
+    let m2 = gen_random_number(num_bits, &mut rng) % &pk.n;
 
-    let c1 = Paillier::encrypt(num_bits, &mut *rng, &m1, &pk);
-    let c2 = Paillier::encrypt(num_bits, &mut *rng, &m2, &pk);
+    let c1 = Paillier::encrypt(num_bits, &mut rng, &m1, &pk);
+    let c2 = Paillier::encrypt(num_bits, &mut rng, &m2, &pk);
 
     let c3 = Paillier::add(&c1, &c2, &pk);
     let m3 = Paillier::decrypt(&c3, &sk, &pk);
