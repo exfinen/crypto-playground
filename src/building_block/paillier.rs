@@ -11,6 +11,10 @@ use crate::building_block::util::{
   gen_random_prime,
   get_32_byte_rng,
 };
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
 pub enum GCalcMethod {
   Random,
@@ -19,7 +23,7 @@ pub enum GCalcMethod {
 
 pub struct Paillier();
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicKey {
   pub n: Integer,
   pub g: Integer,

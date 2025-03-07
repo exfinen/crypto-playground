@@ -5,10 +5,11 @@ use crate::building_block::{
   paillier::{
     GCalcMethod,
     Paillier,
+    PublicKey,
   },
   pedersen_secp256k1::{
     // CommitmentPair,
-    // Decommitment,
+    Decommitment,
     PedersenCommitment,
   },
   secp256k1::{
@@ -20,9 +21,10 @@ use crate::building_block::{
 use crate::protocols::gg18::network::{
   BroadcastId,
   Network,
+  UnicastId,
+  UnicastDest
 };
 use std::sync::Arc;
-use serde::{Serialize, Deserialize};
 
 pub struct Party {
   num_parties: usize,
@@ -31,6 +33,11 @@ pub struct Party {
 }
 
 const KGC_BROADCAST: BroadcastId = BroadcastId(1);
+const KGD_BROADCAST: BroadcastId = BroadcastId(2);
+const PUBKEY_BROADCAST: BroadcastId = BroadcastId(3);
+const DECOMM_BROADCAST: BroadcastId = BroadcastId(4);
+
+const P_I_UNICAST: UnicastId = UnicastId(1);
 
 impl Party {
   pub fn new(
@@ -46,12 +53,7 @@ impl Party {
   }
 
   pub async fn generate_key(&mut self) {
-    let _paillier = Paillier::new(
-      32, // TODO change to 256
-      GCalcMethod::Random,
-    );
-
-    //// Phase 1  
+    //// Phase 1
     let u_i = Scalar::rand();
 
     let pedersen = PedersenCommitment::new();
@@ -60,91 +62,100 @@ impl Party {
       pedersen.commit(&u_i, blinding_factor)
     };
 
-    // broadcast KGC_i (comm)
+    // broadcast KGC_i commitment
     self.network.broadcast(
       &KGC_BROADCAST,
-      comm_pair.comm.serialize(),
+      &comm_pair.comm.serialize(),
     ).await;
 
     let KGC_is: Vec<Point> = {
       let xs = self.network.receive_broadcasts(KGC_BROADCAST).await;
       xs.iter().map(|x| Point::deserialize(&x)).collect()
     };
-    for KGC_i in KGC_is {
-      println!("Party {} received: {:?}", self.party_id, KGC_i);
+
+    // broadcast paillier pk: E_i
+    let paillier = Paillier::new(
+      32, // TODO change to 256
+      GCalcMethod::Random,
+    );
+    self.network.broadcast(
+      &PUBKEY_BROADCAST,
+      &bincode::serialize(&paillier.pk).unwrap(),
+    ).await;
+
+    let E_is: Vec<PublicKey> = {
+      let xs = self.network.receive_broadcasts(PUBKEY_BROADCAST).await;
+      xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
+    };
+
+    // make sure all public keys are unique
+    for i in 0..E_is.len() {
+      for j in i+1..E_is.len() {
+        if E_is[i].n == E_is[j].n {
+          panic!("Not all public keys are unique");
+        }
+      }
     }
 
-    // let KGC_is: Vec<Point> = 
-    //   self.network.receive_broadcasts().iter().map(|x| x.deserialize()).collect();
-
-    // broadcast E_i
-    // self.network.broadcast(paillier.pk);
-
     //// Phase 2
+
     // broadcast KGD_i -> obtains U_i
-    // send p_i(other_parties) to other_parties
+    self.network.broadcast(
+      &DECOMM_BROADCAST,
+      &comm_pair.decomm.serialize(),
+    ).await;
+
+    // receive KGD_i from other parties
+    let KGD_is: Vec<Decommitment> = {
+      let xs = self.network.receive_broadcasts(DECOMM_BROADCAST).await;
+      xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
+    };
+
+    // Decommit KGC_i/KGD_i to obtain U_i. then
+    // aggregate U_is to construct the public key
+    // also return a vector of U_is
+    let (pk, U_is) = {
+      let g = Point::get_base_point();
+      let mut pk = Point::point_at_infinity();
+
+      let mut U_is = vec![];
+      for comm_decomm in KGC_is.iter().zip(KGD_is.iter())  {
+        let (comm, decomm) = comm_decomm;
+        let comm_rec = decomm.m + g * decomm.r;
+        if &comm_rec != comm {
+          panic!("Phase 2: Invalid commitment");
+        }
+        pk = pk + *comm;
+        U_is.push(comm.clone());
+      }
+      (pk, U_is)
+    };
+
+    // construct a random polynomial of degree 1 with u_i
+    // as the constant term
+    let a_i = Scalar::rand();
+    let p_i = Box::new(move |x: usize| { u_i + a_i * Scalar::from(x) });
+
+    // create a hiding of the coefficient of the degree 1 term
+    let g = Point::get_base_point();
+    let A_i = g * a_i;
+
+    // evaluate the polynomial at the points for other parties
+    // and send the results to them
+    for i in 0..self.num_parties {
+      if i == self.party_id {
+        continue;
+      }
+      let result: Scalar = p_i(i + 1);
+      let dest = UnicastDest::new(
+        P_I_UNICAST,
+        self.party_id,
+        i,
+      );
+      self.network.unicast(&dest, &result.serialize()).await;
+    }
   }
 
-  // // call this after phase 1
-  // pub fn all_pubkeys_distinct(points: &Vec<PublicKey>) -> bool {
-  //   for i in 0..points.len() {
-  //     for j in i+1..points.len() {
-  //       if points[i].n == points[j].n {
-  //         return false;
-  //       }
-  //     }
-  //   }
-  //   true
-  // }
-  // 
-  // // Each player P_i broadcasts KGD_i
-  // pub fn phase_2_1(&self) -> Decommitment {
-  //   self.comm_pair.unwrap().decomm.clone()
-  // }
-  // 
-  // // Decommit KGC_i/KGD_i to obtain U_i (=u_i*G)
-  // // Then: 
-  // // - calculate PK = sum(U_i)
-  // // - return validated commitments
-  // pub fn phase_2_2(
-  //   &mut self,
-  //   comm_decomms: &Vec<(&Point,&Decommitment)>,
-  // ) -> Result<Vec<Point>, &'static str> {
-  //   // aggregate commitments to construct the public key
-  //   // making sure each commitment is valid
-  //   let g = Point::get_base_point();
-  //   let mut pk = Point::point_at_infinity();
-  // 
-  //   let mut U_is = vec![];
-  //   for comm_decomm in comm_decomms {
-  //     let (comm, decomm) = comm_decomm;
-  //     let comm_rec = decomm.m + g * decomm.r;
-  //     if &comm_rec != *comm {
-  //       return Err("Phase 2-2: Invalid commitment");
-  //     }
-  //     pk = pk + *comm;
-  //     U_is.push(*comm.clone());
-  //   }
-  //   self.pk = Some(pk);
-  //   Ok(U_is)
-  // }
-  // 
-  // // each player constructs a polynomial of degree 1:
-  // // p_i(x) = u_i + a_i*x (a_i->$Z_p)
-  // pub fn phase_2_3(&mut self) -> Point {
-  //   let a_i = Scalar::rand();
-  //   let u_i = self.u_i.unwrap();
-  //   let G = Point::get_base_point();
-  //   self.p_i = Some(Box::new(move |x: usize| { u_i + a_i * Scalar::from(x) }));
-  //   self.A_i = Some(G * a_i);
-  // 
-  //   self.A_i.unwrap().clone()
-  // }
-  // 
-  // fn key_gen_phase_2_4_eval_p(&self, i: usize) -> Scalar {
-  //   self.p_i.as_ref().unwrap()(i)
-  // }
-  // 
   // // using Feldman VSS, verify that the same polynomial is used
   // // to generate all shares
   // pub fn phase_2_4(

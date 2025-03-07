@@ -15,6 +15,10 @@ use rug::{
   integer::Order,
   Integer,
 };
+use serde::{
+  Serialize,
+  Deserialize,
+};
 
 extern "C" {
   #[link_name = "secp256k1_export_scalar_set_int"]
@@ -46,7 +50,7 @@ extern "C" {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Scalar { // using 4x64 assuming 64-bit arch
   d: [u64; 4],
 }

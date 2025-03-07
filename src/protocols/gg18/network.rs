@@ -8,16 +8,19 @@ use tokio::sync::{
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct UnicastId {
-  kind: u8,
+pub struct UnicastId(pub u8);
+
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
+pub struct UnicastDest {
+  id: UnicastId,
   from: usize,
   to: usize,
 }
 
-impl UnicastId {
-  pub fn new(kind: u8, from: usize, to: usize) -> Self {
+impl UnicastDest {
+  pub fn new(id: UnicastId, from: usize, to: usize) -> Self {
     Self {
-      kind,
+      id,
       from,
       to,
     }
@@ -27,15 +30,13 @@ impl UnicastId {
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct BroadcastId(pub u8);
 
-
 type ValueType = Vec<u8>;
 type BroadcastValues = Vec<ValueType>;
-type UnicastValue = ValueType;
 
 pub struct Network {
   num_parties: usize,
   broadcasts: Arc<Mutex<HashMap<BroadcastId,BroadcastValues>>>,
-  unicasts: Arc<Mutex<HashMap<UnicastId,UnicastValue>>>,
+  unicasts: Arc<Mutex<HashMap<UnicastDest,ValueType>>>,
   data_added: Arc<Notify>,
 }
 
@@ -52,18 +53,18 @@ impl Network {
   pub async fn broadcast(
     &self,
     id: &BroadcastId,
-    value: ValueType,
+    value: &ValueType,
   ) {
     let mut broadcasts = self.broadcasts.lock().await;
     if broadcasts.contains_key(id) {
       if broadcasts.get(id).unwrap().len() <= self.num_parties {
-        broadcasts.get_mut(id).unwrap().push(value);
+        broadcasts.get_mut(id).unwrap().push(value.clone());
       } else {
         panic!("Unexpected number of Broadcasts for {:?}", id);
       }
 
     } else {
-      broadcasts.insert(id.clone(), vec![value]);
+      broadcasts.insert(id.clone(), vec![value.clone()]);
     }
     self.data_added.notify_waiters();
   }
@@ -83,22 +84,26 @@ impl Network {
     }
   }
 
-  pub async fn unicast(&mut self, id: &UnicastId, data: UnicastValue) {
+  pub async fn unicast(
+    &self,
+    dest: &UnicastDest,
+    value: &ValueType,
+  ) {
     let mut unicasts = self.unicasts.lock().await;
-    if !unicasts.contains_key(&id) {
-      unicasts.insert(id.clone(), data);
+    if !unicasts.contains_key(&dest) {
+      unicasts.insert(dest.clone(), value.clone());
     } else {
-      panic!("Multiple Unicasts found for {:?}", id);
+      panic!("Multiple Unicasts found for destination {:?}", dest);
     }
     self.data_added.notify_waiters();
   }
 
-  pub async fn receive_unicast(&self, id: &UnicastId) -> UnicastValue {
+  pub async fn receive_unicast(&self, dest: &UnicastDest) -> ValueType {
     // wait until unicast is received
     loop {
       let unicasts = self.unicasts.lock().await;
-      if unicasts.contains_key(&id) { 
-        return unicasts.get(&id).unwrap().clone();
+      if unicasts.contains_key(&dest) { 
+        return unicasts.get(&dest).unwrap().clone();
       }
       drop(unicasts);
       self.data_added.notified().await;

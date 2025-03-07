@@ -5,8 +5,12 @@ use crate::building_block::secp256k1::{
   point::Point,
   scalar::Scalar,
 };
+use serde::{
+  Serialize,
+  Deserialize,
+};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Decommitment {
   pub m: Point,
   pub r: Scalar,
@@ -19,9 +23,17 @@ impl Decommitment {
       r: r.clone(),
     }
   }
+
+  pub fn serialize(&self) -> Vec<u8> {
+    bincode::serialize(self).unwrap()
+  }
+
+  pub fn deserialize(buf: &[u8]) -> Self {
+    bincode::deserialize(buf).unwrap()
+  }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct CommitmentPair {
   pub comm: Point,
   pub decomm: Decommitment,
