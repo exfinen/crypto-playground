@@ -32,12 +32,15 @@ pub struct Party {
   num_parties: usize,
   party_id: usize,
   network: Arc<Network>,
+  x_i: Option<Scalar>, // shard private key
+  X_i: Option<Point>, // shard public key
 }
 
 const KGC_BROADCAST: BroadcastId = BroadcastId(1);
 const KGD_BROADCAST: BroadcastId = BroadcastId(2);
 const PUBKEY_BROADCAST: BroadcastId = BroadcastId(3);
 const DECOMM_BROADCAST: BroadcastId = BroadcastId(4);
+const A_I_BROADCAST: BroadcastId = BroadcastId(5);
 
 const P_I_UNICAST: UnicastId = UnicastId(1);
 
@@ -51,6 +54,8 @@ impl Party {
       num_parties,
       party_id,
       network,
+      x_i: None,
+      X_i: None,
     }
   }
 
@@ -133,14 +138,27 @@ impl Party {
       (pk, U_is)
     };
 
-    // construct a random polynomial of degree 1 with u_i
-    // as the constant term
+    // construct a random polynomial of degree 1
+    // with the constant term u_i
     let a_i = Scalar::rand();
     let p_i = Box::new(move |x: usize| { u_i + a_i * Scalar::from(x) });
 
-    // create a hiding of the coefficient of the degree 1 term
-    let g = Point::get_base_point();
-    let A_i = g * a_i;
+    // create a hiding of the coefficient of the degree 1 term and
+    // broadcast
+    let A_i = {
+      let g = Point::get_base_point();
+      g * a_i
+    };
+    self.network.broadcast(
+      &A_I_BROADCAST,
+      &A_i.serialize(),
+    ).await;
+
+    // receive A_is of all parties including this party
+    let A_is: Vec<Point> = {
+      let xs = self.network.receive_broadcasts(A_I_BROADCAST).await;
+      xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
+    };
 
     // evaluate the polynomial at the points for other parties
     // and send the results to them
@@ -157,7 +175,7 @@ impl Party {
       self.network.unicast(&dest, &result.serialize()).await;
     }
 
-    // receive p_i from other parties
+    // construct p_is receiving missing p_is from other parties
     let p_is = {
       let mut p_is = vec![];
       for i in 0..self.num_parties {
@@ -178,48 +196,28 @@ impl Party {
       p_is
     };
 
-  }
+    // using Feldman VSS, verify that a compromiseed polynomial is not used
+    // to generate any of the shares
+    let g = Point::get_base_point();
+    for x in p_is.iter().zip(U_is.iter()).zip(A_is.iter()) {
+      let ((p_i, U_i), A_i) = x;
+      let lhs = g * p_i;
+      let rhs = U_i + A_i;
+      if lhs != rhs {
+        panic!("Phase 2: Malformed polynomial found");
+      }
+    }
 
-  // // using Feldman VSS, verify that the same polynomial is used
-  // // to generate all shares
-  // pub fn phase_2_4(
-  //   &self,
-  //   p_is: &Vec<Scalar>,
-  //   U_is: &Vec<Point>,
-  //   A_is: &Vec<Point>,
-  // ) -> Result<(), &'static str> {
-  //   let g = Point::get_base_point();
-  //   for x in p_is.iter().zip(U_is.iter()).zip(A_is.iter()) {
-  //     let ((p_i, U_i), A_i) = x;
-  //     let lhs = g * p_i;
-  //     let rhs = U_i + A_i;
-  //     if lhs != rhs {
-  //       return Err("Phase 2-4: Malformed polynomial");
-  //     }
-  //   }
-  //   Ok(())
-  // }
-  // 
-  // // calculate:
-  // // - shard private key: sum(u_i) + sum(a_i)
-  // // - shared public key: PK + sum(A_i)
-  // pub fn phase_2_5(
-  //   &mut self,
-  //   player_id: usize,
-  //   p_is: &Vec<Scalar>,
-  //   A_is: &Vec<Point>,
-  // ) {
-  //   let sum_p_is = p_is.iter().fold(Scalar::zero(), |acc, p| acc + *p);
-  //   self.x_i = Some(sum_p_is);
-  // 
-  //   let sum_A_i = A_is.iter().fold(self.pk.unwrap(), |acc, A| acc + *A);
-  //   let pk = &self.pk.unwrap();
-  //   let X_i = pk + sum_A_i;
-  // 
-  //   // fill this player's PK shard only
-  //   self.X_is.as_mut().unwrap()[player_id - 1] = X_i;
-  // }
-  // 
+    // calculate shard private key + sum(a_i)
+    self.x_i = Some(
+      p_is.iter().fold(Scalar::zero(), |acc, p_i| acc + p_i)
+    );
+
+    // calculate shard public key
+    self.X_i = Some(
+      pk + A_is.iter().fold(Point::point_at_infinity(), |acc, A_i| acc + A_i)
+    );
+  }
 }
 
 #[cfg(test)]
