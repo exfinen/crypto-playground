@@ -29,9 +29,9 @@ extern "C" {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Point { // using 5x52 assuming 64-bit arch
-  x: [u64; 5], 
-  y: [u64; 5],
-  z: [u64; 5],
+  pub x: [u64; 5], 
+  pub y: [u64; 5],
+  pub z: [u64; 5],
   infinity: c_int,
 }
 

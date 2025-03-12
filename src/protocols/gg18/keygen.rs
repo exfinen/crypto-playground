@@ -88,6 +88,7 @@ impl Party {
       &bincode::serialize(&paillier.pk).unwrap(),
     ).await;
 
+    // get all broadcast E_is
     let E_is: Vec<PublicKey> = {
       let xs = self.network.receive_broadcasts(PUBKEY_BROADCAST).await;
       xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()

@@ -12,15 +12,18 @@ use serde::{
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Decommitment {
-  pub m: Point,
-  pub r: Scalar,
+  pub secret: Point,
+  pub blinding_factor: Scalar,
 }
 
 impl Decommitment {
-  pub fn new(m: &Point, r: &Scalar) -> Self {
+  pub fn new(
+    secret: &Point,
+    blinding_factor: &Scalar,
+  ) -> Self {
     Self {
-      m: m.clone(),
-      r: r.clone(),
+      secret: m.clone(),
+      blinding_factor: r.clone(),
     }
   }
 
@@ -79,6 +82,17 @@ impl PedersenCommitment {
 
     CommitmentPair::new(comm, decomm)
   }
+
+  pub fn verify(
+    &self,
+    comm: &Point,
+    decomm: &Decommitment,
+  ) -> bool {
+    let U_i = &self.g * decom.secret;
+    let comm_prime = &U_i + &self.h * decom.blinding_factor;
+
+    comm == comm_prime
+  }
 }
 
 #[cfg(test)]
@@ -93,6 +107,8 @@ mod tests {
     let blinding_factor = Scalar::rand();
     let comm_pair = pedersen.commit(&secret, &blinding_factor);
     println!("comm: {:?}, decomm: {:?}", comm_pair.comm, comm_pair.decomm);
+
+    assert!(pedersen.verify(&comm_pair.comm, &comm_pair.decomm));
   } 
 }
 
