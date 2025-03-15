@@ -9,70 +9,82 @@ use crate::{
       Bob,
       MtA,
     },
+    paillier::PublicKey,
     pedersen_secp256k1::{
       CommitmentPair, Decommitment, PedersenCommitment
     },
     secp256k1::{
-      point::Point,
+      affine_point::AffinePoint,
+      jacobian_point::JacobianPoint,
       scalar::Scalar,
     },
   },
-  protocols::gg18::network::{
-    BroadcastId,
-    Network,
-    UnicastId,
+  protocols::gg18::{
+    network::{
+      BroadcastId,
+      Network,
+      UnicastId,
+      UnicastDest,
+    },
+    signature::Signature,
+    signer_id::SignerId,
   },
 };
-use std::sync::Arc;
+use std::{
+  ops::Deref,
+  sync::Arc,
+};
 use rug::Integer;
 
-pub struct Signature {
-  pub r: Scalar,
-  pub s: Scalar,
-}
-
-pub enum PlayerId {
-  A,
-  B,
-}
-
-pub struct Player {
+pub struct Signer {
+  signer_id: SignerId,
   num_bits: u32,
   paillier_n: Integer,
   network: Arc<Network>,
-  player_id: PlayerId
 }
 
-const PARTY_A_UNICAST: UnicastId = UnicastId(1);
-const PARTY_B_UNICAST: UnicastId = UnicastId(2);
+const UNICAST_TO_SIGNER_A: UnicastId = UnicastId(1);
+const UNICAST_TO_SIGNER_B: UnicastId = UnicastId(2);
 
 const C_I_BROADCAST: BroadcastId = BroadcastId(11);
 const D_I_BROADCAST: BroadcastId = BroadcastId(12);
 const DELTA_I_BROADCAST: BroadcastId = BroadcastId(13);
 const S_I_COMM_BROADCAST: BroadcastId = BroadcastId(14);
 
-pub struct K_i(pub Integer);
-pub struct Gamma_i(pub Integer);
-pub struct Delta_i(pub Integer);
-pub struct Sigma_i(pub Integer);
+macro_rules! define_integer_wrappers {
+  ($($name:ident),*) => {
+    $(
+      pub struct $name(pub Integer);
 
-impl Player {
+      impl Deref for $name {
+        type Target = Integer;
+
+        fn deref(&self) -> &Self::Target {
+          &self.0
+        }
+      }
+    )*
+  };
+}
+define_integer_wrappers!(K_i, Gamma_i, Delta_i, Sigma_i);
+
+impl Signer {
   pub fn new(
+    signer_id: SignerId,
     num_bits: u32,
     paillier_n: &Integer,
     network: Arc<Network>,
-    player_id: PlayerId,
   ) -> Self {
     Self {
+      signer_id,
       num_bits,
       paillier_n: paillier_n.clone(),
       network,
-      player_id
     }
   }
 
   pub async fn run_phase_1(&mut self)
-    -> (k_i, Gamma_i, Vec<Point>, CommitmentPair, PedersenCommitment) {
+    -> (K_i, Gamma_i, Vec<JacobianPoint>, CommitmentPair, PedersenCommitment) {
 
     // select k_i and gamma_i in Z_q and broadcasts C_i
     let k_i = Integer::from(Scalar::rand());
@@ -90,7 +102,7 @@ impl Player {
     ).await;
 
     // correct all broadcast C_is
-    let C_is: Vec<Point> = {
+    let C_is: Vec<JacobianPoint> = {
       let xs = self.network.receive_broadcasts(C_I_BROADCAST).await;
       xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
     };
@@ -100,35 +112,50 @@ impl Player {
 
   pub async fn perfrom_mta_as_alice(
     &mut self,
+    alice_id: &SignerId,
     additive_share: &Integer,
   ) -> Integer {
-    let mta = MtA::new(&self.paillier_n);
+    // TODO use this to get q, q^3, and q^5 from n
+    let _mta = MtA::new(&self.paillier_n);
+
     let alice = Alice::new(
       self.num_bits,
       additive_share,
     );
  
+    let bob_id = &alice_id.the_other();
+
     // Send C_A, E_A(pk), and range proof to Bob
-    self.network.unicast(PARTY_B_UNICAST, &alice.c_a.serialize()).await;
-    self.network.unicast(PARTY_B_UNICAST, &alice.pk.serialize()).await;
-    self.network.unicast(PARTY_B_UNICAST, &alice.rp_a_lt_q3.serialize()).await;
+    let to_bob = &UnicastDest::new(
+      UNICAST_TO_SIGNER_B,
+      alice_id.into(),
+      bob_id.into(),
+    );
+    self.network.unicast(to_bob, &bincode::serialize(&alice.c_a).unwrap()).await;
+    self.network.unicast(to_bob, &bincode::serialize(&alice.pk).unwrap()).await;
+    self.network.unicast(to_bob, &bincode::serialize(&alice.rp_a_lt_q3).unwrap()).await;
 
     // Receive C_b, beta, and range proofs from Bob
-    let c_b = {
-      let x = self.network.receive_unicast(PARTY_A_UNICAST).await;
-      Point::deserialize(&x)
+    let to_alice = &UnicastDest::new(
+      UNICAST_TO_SIGNER_A,
+      bob_id.into(),
+      alice_id.into(),
+    );
+    let c_b: Integer = {
+      let x = self.network.receive_unicast(to_alice).await;
+      bincode::deserialize(&x).unwrap()
     };
-    let beta = {
-      let x = self.network.receive_unicast(PARTY_A_UNICAST).await;
-      Scalar::deserialize(&x)
+    let beta: Integer = {
+      let x = self.network.receive_unicast(to_alice).await;
+      bincode::deserialize(&x).unwrap()
     };
-    let rp_b_lt_q3 = {
-      let x = self.network.receive_unicast(PARTY_A_UNICAST).await;
-      Scalar::deserialize(&x)
+    let rp_b_lt_q3: Integer = {
+      let x = self.network.receive_unicast(to_alice).await;
+      bincode::deserialize(&x).unwrap()
     };
-    let rp_b_lt_q3_bp_le_q7 = {
-      let x = self.network.receive_unicast(PARTY_A_UNICAST).await;
-      Scalar::deserialize(&x)
+    let rp_b_lt_q3_bp_le_q7: Integer = {
+      let x = self.network.receive_unicast(to_alice).await;
+      bincode::deserialize(&x).unwrap()
     };
   
     // Calculate Alpha
@@ -144,80 +171,109 @@ impl Player {
 
   pub async fn perfrom_MtA_as_Bob(
     &mut self,
+    bob_id: &SignerId,
+    paillier_q: &Integer,
     additive_share: &Integer,
   ) {
+    let alice_id = &bob_id.the_other();
+
     // Receive c_a, pk, and range proof from Alice
-    let c_a = {
-      let x = self.network.receive_unicast(PARTY_B_UNICAST).await;
-      Point::deserialize(&x)
+    let to_bob = &UnicastDest::new(
+      UNICAST_TO_SIGNER_B,
+      alice_id.into(),
+      bob_id.into(),
+    );
+    let c_a: Integer = {
+      let x = self.network.receive_unicast(to_bob).await;
+      bincode::deserialize(&x).unwrap()
     };
-    let pk = {
-      let x = self.network.receive_unicast(PARTY_B_UNICAST).await;
-      Point::deserialize(&x)
+    let pk: PublicKey = {
+      let x = self.network.receive_unicast(to_bob).await;
+      bincode::deserialize(&x).unwrap()
     };
-    let rp_a_lt_q3 = {
-      let x = self.network.receive_unicast(PARTY_B_UNICAST).await;
-      Scalar::deserialize(&x)
+    let rp_a_lt_q3: Integer = {
+      let x = self.network.receive_unicast(to_bob).await;
+      bincode::deserialize(&x).unwrap()
     };
 
     // Calculate C_B, beta, and range proofs
     let bob = Bob::new(
-      c_a,
-      q,
-      pk,
-      rp_a_lt_q3,
+      &c_a,
+      paillier_q,
+      &pk,
+      &rp_a_lt_q3,
       &additive_share,
     );
 
     // Send C_b, beta, and range proofs to Alice
-    self.network.unicast(PARTY_A_UNICAST, &bob.c_b.serialize()).await;
-    self.network.unicast(PARTY_A_UNICAST, &bob.beta.serialize()).await;
-    self.network.unicast(PARTY_A_UNICAST, &bob.rp_b_lt_q3.serialize()).await;
-    self.network.unicast(PARTY_A_UNICAST, &bob.rp_b_lt_q3_bp_le_q7.serialize()).await;
+    let to_alice = &UnicastDest::new(
+      UNICAST_TO_SIGNER_A,
+      bob_id.into(),
+      alice_id.into(),
+    );
+    self.network.unicast(to_alice, &bincode::serialize(&bob.c_b).unwrap()).await;
+    self.network.unicast(to_alice, &bincode::serialize(&bob.beta).unwrap()).await;
+    self.network.unicast(to_alice, &bincode::serialize(&bob.rp_b_lt_q3).unwrap()).await;
+    self.network.unicast(to_alice, &bincode::serialize(&bob.rp_b_lt_q3_bp_le_q7).unwrap()).await;
   }
 
   pub async fn run_phase_2_Player_A(
     &mut self,
+    paillier_q: &Integer,
     k_i: &Integer,
     gamma_i: &Integer,
+    omega_i: &Integer,
   ) -> (Delta_i, Sigma_i) {
-    let k_gamma = Self::perfrom_mta_as_alice(
+    let k_i_gamma_i = self.perfrom_mta_as_alice(
+      &SignerId::A,
       &k_i,
     ).await; 
 
-    let k_omega = Self::perfrom_mta_as_alice(
+    let k_i_omega_i = self.perfrom_mta_as_alice(
+      &SignerId::A,
       &k_i,
     ).await; 
 
-    Self::perfrom_MtA_as_Bob(&gamma_i).await;
-    Self::perfrom_MtA_as_Bob(&omega_i).await;
+    self.perfrom_MtA_as_Bob(&SignerId::A, paillier_q, &gamma_i).await;
+    self.perfrom_MtA_as_Bob(&SignerId::A, paillier_q, &omega_i).await;
 
-    let delta_i = &k_i * &gamma_i + &k_i_gamma_i;
-    let sigma_i = &k_i * &omega_i + &k_i_omega_i;
+    let delta_i: Integer = (k_i * gamma_i + &k_i_gamma_i).into();
+    let sigma_i: Integer = (k_i * omega_i + &k_i_omega_i).into();
 
     (Delta_i(delta_i), Sigma_i(sigma_i))
   }
 
   pub async fn run_phase_2_Player_B(
     &mut self,
+    paillier_q: &Integer,
     k_i: &Integer,
     gamma_i: &Integer,
-    delta_i: &Integer,
-    sigma_i: &Integer,
+    omega_i: &Integer,
   ) -> (Delta_i, Sigma_i) {
-    Self::perfrom_MtA_as_Bob(&gamma_i).await;
-    Self::perfrom_MtA_as_Bob(&omega_i).await;
+    self.perfrom_MtA_as_Bob(
+      &SignerId::B,
+      paillier_q,
+      gamma_i,
+    ).await;
 
-    let k_i_gamma_i = Self::perfrom_mta_as_alice(
-      &k_i,
+    self.perfrom_MtA_as_Bob(
+      &SignerId::B,
+      paillier_q,
+      omega_i,
+    ).await;
+
+    let k_i_gamma_i = self.perfrom_mta_as_alice(
+      &SignerId::B,
+      k_i,
     ).await; 
 
-    let k_i_omega_i = Self::perfrom_mta_as_alice(
-      &k_i,
+    let k_i_omega_i = self.perfrom_mta_as_alice(
+      &SignerId::B,
+      k_i,
     ).await; 
      
-    let delta_i = &k_i * &gamma_i + &k_i_gamma_i;
-    let sigma_i = &k_i * &omega_i + &k_i_omega_i;
+    let delta_i: Integer = (k_i * gamma_i + &k_i_gamma_i).into();
+    let sigma_i: Integer = (k_i * omega_i + &k_i_omega_i).into();
 
     (Delta_i(delta_i), Sigma_i(sigma_i))
   }
@@ -229,12 +285,12 @@ impl Player {
     // broadcast delta_i
     self.network.broadcast(
       &DELTA_I_BROADCAST,
-      &delta_i.serialize(),
+      &bincode::serialize::<Integer>(&delta_i).unwrap(),
     ).await;
 
     // correct all broadcast delta_is
     let delta_is: Vec<Integer> = {
-      let xs = network.receive_broadcasts(DELTA_I_BROADCAST).await;
+      let xs = self.network.receive_broadcasts(DELTA_I_BROADCAST).await;
       xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
     };
 
@@ -245,9 +301,9 @@ impl Player {
     &mut self,
     pedersen: &PedersenCommitment,
     decomm: &Decommitment,
-    C_is: &Vec<Point>,
+    C_is: &Vec<JacobianPoint>,
     delta_inv: &Scalar,
-  ) -> Result<Scalar, ()> {
+  ) -> Result<Scalar, String> {
     // broadcasst D_i
     self.network.broadcast(
       &D_I_BROADCAST,
@@ -261,7 +317,7 @@ impl Player {
     };
 
     // Decommit the committed value along with the blinding factor
-    for comm_pair in C_is.iter().zip(&D_is.iter()) {
+    for comm_pair in C_is.iter().zip(&D_is) {
       let (C_i, D_i) = comm_pair;
       if !pedersen.verify(C_i, D_i) {
         return Err("Gamma decommitment failed".to_string());
@@ -271,17 +327,20 @@ impl Player {
     // TODO prove that the party know gamma_i using zk proof
 
     // R = k^-1 * G 
-    let aggr_gamma: Point = C_is.iter().fold(Point::zero(), |acc, c_i| acc + c_i);
+    let aggr_gamma: JacobianPoint = C_is.iter().fold(
+      JacobianPoint::point_at_infinity(),
+      |acc, c_i| acc + c_i
+    );
 
-    let R: Point = aggr_gamma * delta_inv; // TODO mod by group order
+    let jacob_R = aggr_gamma * delta_inv;
 
     // R is a Jacobian point, so convert it to Affine point
-    let z_inv_sq = R.z.inv().unwrap().square().unwrap();
-    let r_x = R.x * z_inv_sq;  // TODO modulo field order
+    let affine_R: AffinePoint = jacob_R.into();
+    let r_x: Scalar = affine_R.x().into();
 
-    // if r_x == 0, start over
-    if r_x == Integer::ZERO() {
-      return Err(());
+    // if r_x is 0, start over
+    if r_x.is_zero() {
+      return Err("r_x is zero".to_string());
     }
     Ok(r_x)
   }
@@ -289,12 +348,15 @@ impl Player {
   pub async fn run_phase_5(
     &mut self,
     comm_pair: &CommitmentPair,
+    k_i: &K_i,
     sigma_i: &Sigma_i,
+    m: &Integer,
+    r: &Scalar,
   ) -> Scalar {
-    let s_i = m * &k_i + &r * &sigma_i;
+    let s_i = m * k_i + r * sigma_i;
 
     // generate a commitment of s_i and broadcast
-    pedersen = PedersenCommitment::new();
+    let pedersen = PedersenCommitment::new();
     let blinding_factor = &Scalar::rand();
     let comm_pair = pedersen.commit(&s_i, &blinding_factor);
 
@@ -305,7 +367,7 @@ impl Player {
 
     // Correct all broadcast s_i commitments
     let comm_pairs: Vec<CommitmentPair> = {
-      let xs = network.receive_broadcasts(S_I_COMM_BROADCAST).await;
+      let xs = self.network.receive_broadcasts(S_I_COMM_BROADCAST).await;
       xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
     };
 
@@ -403,24 +465,43 @@ mod tests {
   async fn test_key_gen() {
     let network = Arc::new(Network::new(3));
     let num_parties = 3;
+    let paillier_n = Integer::from(421); // TODO fix this
 
-    let mut players = vec![];
     let player_a = Player::new(
       num_parties,
-      party_id,
+      &paillier_n,
       Arc::clone(&network),
       PlayerId::A,
     );
+    let player_b = Player::new(
+      num_parties,
+      &paillier_n,
+      Arc::clone(&network),
+      PlayerId::B,
+    );
+    let players = vec![
+      player_a,
+      player_b,
+    ];
+    
+    let m = "test";
+    let omega_a = Scalar::from(1); // TODO use the value from the key
+    let omega_b = Scalar::from(2);
 
-      parties.push(party);
-    }
-
-    let mut handles = vec![];
-    for mut party in parties {
-      handles.push(spawn(async move {
-        party.create_signature().await;
-      }));
-    }
+    let handles = vec![
+      spawn(async move {
+        player_a.create_signature(
+          m,
+          omega_a,
+        ).await;
+      }),
+      spawn(async move {
+        player_b.create_signature(
+          m,
+          omega_b,
+        ).await;
+      }),
+    ];
 
     for handle in handles {
       handle.await.unwrap();

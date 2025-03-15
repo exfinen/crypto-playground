@@ -13,22 +13,24 @@ use crate::building_block::{
     PedersenCommitment,
   },
   secp256k1::{
-    point::Point,
+    jacobian_point::JacobianPoint as Point,
     scalar::Scalar,
   },
 };
 // use rug::Integer;
-use crate::protocols::gg18::network::{
-  BroadcastId,
-  Network,
-  UnicastId,
-  UnicastDest
+use crate::protocols::gg18::{
+  network::{
+    BroadcastId,
+    Network,
+    UnicastId,
+    UnicastDest,
+  },
 };
 use std::sync::Arc;
 
 pub struct Party {
   num_parties: usize,
-  party_id: usize,
+  generator_id: u32,
   network: Arc<Network>,
   x_i: Option<Scalar>, // shard private key
   X_i: Option<Point>, // shard public key
@@ -45,12 +47,12 @@ const P_I_UNICAST: UnicastId = UnicastId(1);
 impl Party {
   pub fn new(
     num_parties: usize,
-    party_id: usize,
+    generator_id: u32,
     network: Arc<Network>,
   ) -> Self {
     Self {
       num_parties,
-      party_id,
+      generator_id,
       network,
       x_i: None,
       X_i: None,
@@ -121,13 +123,15 @@ impl Party {
     // aggregate U_is to construct the public key
     // also return a vector of U_is
     let (pk, U_is) = {
-      let g = Point::get_base_point();
+      let g = &pedersen.g;
+      let h = &pedersen.h;
+
       let mut pk = Point::point_at_infinity();
 
       let mut U_is = vec![];
       for comm_decomm in KGC_is.iter().zip(KGD_is.iter())  {
         let (comm, decomm) = comm_decomm;
-        let comm_rec = decomm.m + g * decomm.r;
+        let comm_rec = g * decomm.secret + h * decomm.blinding_factor;
         if &comm_rec != comm {
           panic!("Phase 2: Invalid commitment");
         }
@@ -140,7 +144,7 @@ impl Party {
     // construct a random polynomial of degree 1
     // with the constant term u_i
     let a_i = Scalar::rand();
-    let p_i = Box::new(move |x: usize| { u_i + a_i * Scalar::from(x) });
+    let p_i = Box::new(move |x: u32| { u_i + a_i * Scalar::from(x) });
 
     // create a hiding of the coefficient of the degree 1 term and
     // broadcast
@@ -162,14 +166,15 @@ impl Party {
     // evaluate the polynomial at the points for other parties
     // and send the results to them
     for i in 0..self.num_parties {
-      if i == self.party_id {
+      let i = i as u32;
+      if i == self.generator_id {
         continue;
       }
       let result: Scalar = p_i(i + 1);
       let dest = UnicastDest::new(
         P_I_UNICAST,
-        self.party_id,
-        i,
+        self.generator_id,
+        i as u32,
       );
       self.network.unicast(&dest, &result.serialize()).await;
     }
@@ -178,14 +183,15 @@ impl Party {
     let p_is = {
       let mut p_is = vec![];
       for i in 0..self.num_parties {
-        if i == self.party_id {
+        let i = i as u32;
+        if i == self.generator_id {
           let p_i = p_i(i + 1);
           p_is.push(p_i);
         } else {
           let dest = UnicastDest::new(
             P_I_UNICAST,
             i,
-            self.party_id,
+            self.generator_id,
           );
           let ser_p_i: Vec<u8> = self.network.receive_unicast(&dest).await;
           let p_i = Scalar::deserialize(&ser_p_i).unwrap();

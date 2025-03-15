@@ -3,7 +3,7 @@
 
 use crate::building_block::secp256k1::{
   scalar::Scalar,
-  point::Point,
+  jacobian_point::JacobianPoint as Point,
 };
 use std::fmt;
 

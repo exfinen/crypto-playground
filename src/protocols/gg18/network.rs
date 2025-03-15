@@ -13,12 +13,12 @@ pub struct UnicastId(pub u8);
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct UnicastDest {
   id: UnicastId,
-  from: usize,
-  to: usize,
+  from: u32,
+  to: u32,
 }
 
 impl UnicastDest {
-  pub fn new(id: UnicastId, from: usize, to: usize) -> Self {
+  pub fn new(id: UnicastId, from: u32, to: u32) -> Self {
     Self {
       id,
       from,

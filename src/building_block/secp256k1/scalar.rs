@@ -2,11 +2,13 @@
 #![allow(dead_code)]
 
 use std::{
+  cmp::PartialEq,
   fmt,
   ffi::c_int,
   ops::{Add, AddAssign, Sub, Mul, MulAssign},
-  cmp::PartialEq,
+  os::raw::c_uchar,
 };
+use crate::building_block::secp256k1::field::Field;
 use rand::{
   rngs::OsRng,
   RngCore,
@@ -26,6 +28,9 @@ extern "C" {
 
   #[link_name = "secp256k1_export_scalar_inverse"]
   fn scalar_inverse(r: *mut Scalar, a: *const Scalar);
+
+  #[link_name = "secp256k1_export_scalar_is_zero"]
+  fn scalar_is_zero(ra: *const Scalar) -> c_int;
 
   #[link_name = "secp256k1_export_scalar_negate"]
   fn scalar_negate(r: *mut Scalar, a: *const Scalar);
@@ -47,6 +52,12 @@ extern "C" {
 
   #[link_name = "secp256k1_export_scalar_mul"]
   fn scalar_mul(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
+
+  #[link_name = "secp256k1_fe_normalize"]
+  fn fe_normalize(a: *const Field);
+
+  #[link_name = "secp256k1_fe_get_b32"]
+  fn fe_get_b32(r: *mut c_uchar, a: *const Field);
 }
 
 #[repr(C)]
@@ -64,6 +75,12 @@ impl Scalar {
 
   pub fn zero() -> Self {
     Scalar::from(0u32)
+  }
+
+  pub fn is_zero(&self) -> bool {
+    unsafe {
+      scalar_is_zero(self) != 0
+    }
   }
 
   pub fn inv(&self) -> Self {
@@ -111,6 +128,19 @@ impl Scalar {
       scalar_set_b32(&mut s, buf.as_ptr());
     }
     Ok(s)
+  }
+}
+
+impl From<Field> for Scalar {
+  fn from(field: Field) -> Self {
+    let mut scalar = Scalar::new();
+    unsafe {
+      fe_normalize(&field);
+      let mut buf = [0u8; 32];
+      fe_get_b32(buf.as_mut_ptr(), &field);
+      scalar_set_b32(&mut scalar, buf.as_ptr()); // TODO handle overflow?
+      scalar
+    }
   }
 }
 

@@ -6,7 +6,10 @@ use std::{
   ops::{Add, AddAssign, Mul},
   cmp::PartialEq,
 };
-use crate::building_block::secp256k1::scalar::Scalar;
+use crate::building_block::secp256k1::{
+  field::{Field, Fe5x52},
+  scalar::Scalar,
+};
 use serde::{
   Serialize,
   Deserialize,
@@ -14,35 +17,39 @@ use serde::{
 
 extern "C" {
   #[link_name = "secp256k1_export_group_add"]
-  fn group_add(r: *mut Point, a: *const Point, b: *const Point);
+  fn group_add(r: *mut JacobianPoint, a: *const JacobianPoint, b: *const JacobianPoint);
 
   #[link_name = "secp256k1_export_group_ecmult"]
-  fn group_mul(r: *mut Point, a: *const Point, q: Scalar);
+  fn group_mul(r: *mut JacobianPoint, a: *const JacobianPoint, q: Scalar);
 
   #[link_name = "secp256k1_export_group_eq"]
-  fn group_eq(a: *const Point, b: *const Point) -> c_int;
+  fn group_eq(a: *const JacobianPoint, b: *const JacobianPoint) -> c_int;
 
   #[link_name = "secp256k1_export_group_get_base_point"]
-  fn group_get_base_point(r: *mut Point);
+  fn group_get_base_point(r: *mut JacobianPoint);
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct Point { // using 5x52 assuming 64-bit arch
-  pub x: [u64; 5], 
-  pub y: [u64; 5],
-  pub z: [u64; 5],
+pub struct JacobianPoint { // using 5x52 assuming 64-bit arch
+  pub x: Fe5x52,
+  pub y: Fe5x52,
+  pub z: Fe5x52,
   infinity: c_int,
 }
 
-impl Point {
+impl JacobianPoint {
   fn new() -> Self { // returns point at infinity
-    Point {
+    JacobianPoint {
       x: [0; 5],
       y: [0; 5],
       z: [0; 5],
       infinity: 1,
     }
+  }
+
+  pub fn z(&self) -> Field {
+    self.z.into()
   }
 
   pub fn point_at_infinity() -> Self {
@@ -70,16 +77,16 @@ impl Point {
   }
 }
 
-impl From<Scalar> for Point {
+impl From<Scalar> for JacobianPoint {
   fn from(n: Scalar) -> Self {
-    let g = Point::get_base_point();
+    let g = JacobianPoint::get_base_point();
     g * n
   }
 }
 
-impl From<&Scalar> for Point {
+impl From<&Scalar> for JacobianPoint {
   fn from(n: &Scalar) -> Self {
-    let g = Point::get_base_point();
+    let g = JacobianPoint::get_base_point();
     g * n
   }
 }
@@ -87,10 +94,10 @@ impl From<&Scalar> for Point {
 macro_rules! impl_op {
   ("nn", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
     impl $trait<$rhs> for $lhs {
-      type Output = Point;
+      type Output = JacobianPoint;
 
-      fn $op_fn(self, rhs: $rhs) -> Point {
-        let mut r = Point::new();
+      fn $op_fn(self, rhs: $rhs) -> JacobianPoint {
+        let mut r = JacobianPoint::new();
         unsafe {
           $ffi_fn(&mut r, &self, &rhs);
         }
@@ -100,10 +107,10 @@ macro_rules! impl_op {
   };
   ("nr", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
     impl $trait<$rhs> for $lhs {
-      type Output = Point;
+      type Output = JacobianPoint;
 
-      fn $op_fn(self, rhs: $rhs) -> Point {
-        let mut r = Point::new();
+      fn $op_fn(self, rhs: $rhs) -> JacobianPoint {
+        let mut r = JacobianPoint::new();
         unsafe {
           $ffi_fn(&mut r, &self, rhs);
         }
@@ -113,10 +120,10 @@ macro_rules! impl_op {
   };
   ("rn", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
     impl $trait<$rhs> for $lhs {
-      type Output = Point;
+      type Output = JacobianPoint;
 
-      fn $op_fn(self, rhs: $rhs) -> Point {
-        let mut r = Point::new();
+      fn $op_fn(self, rhs: $rhs) -> JacobianPoint {
+        let mut r = JacobianPoint::new();
         unsafe {
           $ffi_fn(&mut r, self, &rhs);
         }
@@ -126,10 +133,10 @@ macro_rules! impl_op {
   };
   ("rr", $trait:ident, $op_fn:ident, $ffi_fn:ident, $lhs:ty, $rhs:ty) => {
     impl $trait<$rhs> for $lhs {
-      type Output = Point;
+      type Output = JacobianPoint;
 
-      fn $op_fn(self, rhs: $rhs) -> Point {
-        let mut r = Point::new();
+      fn $op_fn(self, rhs: $rhs) -> JacobianPoint {
+        let mut r = JacobianPoint::new();
         unsafe {
           $ffi_fn(&mut r, self, rhs);
         }
@@ -140,20 +147,20 @@ macro_rules! impl_op {
 }
 
 // Add
-impl_op!("nn", Add, add, group_add, Point, Point);
-impl_op!("nr", Add, add, group_add, Point, &Point);
-impl_op!("rn", Add, add, group_add, &Point, Point);
-impl_op!("rr", Add, add, group_add, &Point, &Point);
+impl_op!("nn", Add, add, group_add, JacobianPoint, JacobianPoint);
+impl_op!("nr", Add, add, group_add, JacobianPoint, &JacobianPoint);
+impl_op!("rn", Add, add, group_add, &JacobianPoint, JacobianPoint);
+impl_op!("rr", Add, add, group_add, &JacobianPoint, &JacobianPoint);
 
 // Mul
-impl_op!("nr", Mul, mul, group_mul, Point, Scalar);
-impl_op!("rr", Mul, mul, group_mul, &Point, Scalar);
+impl_op!("nr", Mul, mul, group_mul, JacobianPoint, Scalar);
+impl_op!("rr", Mul, mul, group_mul, &JacobianPoint, Scalar);
 
-impl Mul<&Scalar> for Point {
-  type Output = Point;
+impl Mul<&Scalar> for JacobianPoint {
+  type Output = JacobianPoint;
 
-  fn mul(self, rhs: &Scalar) -> Point {
-    let mut r = Point::new();
+  fn mul(self, rhs: &Scalar) -> JacobianPoint {
+    let mut r = JacobianPoint::new();
     unsafe {
       group_mul(&mut r, &self, *rhs);
     }
@@ -161,11 +168,11 @@ impl Mul<&Scalar> for Point {
   }
 }
 
-impl Mul<&Scalar> for &Point {
-  type Output = Point;
+impl Mul<&Scalar> for &JacobianPoint {
+  type Output = JacobianPoint;
 
-  fn mul(self, rhs: &Scalar) -> Point {
-    let mut r = Point::new();
+  fn mul(self, rhs: &Scalar) -> JacobianPoint {
+    let mut r = JacobianPoint::new();
     unsafe {
       group_mul(&mut r, self, *rhs);
     }
@@ -173,7 +180,7 @@ impl Mul<&Scalar> for &Point {
   }
 }
 
-impl AddAssign<Point> for Point {
+impl AddAssign<JacobianPoint> for JacobianPoint {
   fn add_assign(&mut self, rhs: Self) {
     let res = self.clone() + rhs;
 
@@ -184,7 +191,7 @@ impl AddAssign<Point> for Point {
   }
 }
 
-impl PartialEq for Point {
+impl PartialEq for JacobianPoint {
   fn eq(&self, rhs: &Self) -> bool {
     let r;
     unsafe {
@@ -193,7 +200,7 @@ impl PartialEq for Point {
     r != 0
   }
 }
-impl Eq for Point {} // Point has total equality
+impl Eq for JacobianPoint {} // JacobianPoint has total equality
 
 #[cfg(test)]
 mod tests {
@@ -202,7 +209,7 @@ mod tests {
   #[test]
   fn test_add_mul() {
     let two = Scalar::from(2u32);
-    let a = Point::get_base_point();
+    let a = JacobianPoint::get_base_point();
     let b = a + a;
     let c = a * two;
 
@@ -212,7 +219,7 @@ mod tests {
 
   #[test]
   fn test_eq() {
-    let a = Point::get_base_point();
+    let a = JacobianPoint::get_base_point();
     let b = a.clone();
     let c = a + b;
 

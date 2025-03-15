@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use crate::building_block::secp256k1::{
-  point::Point,
+  jacobian_point::JacobianPoint as Point,
   scalar::Scalar,
 };
 use serde::{
@@ -12,18 +12,18 @@ use serde::{
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Decommitment {
-  pub secret: Point,
+  pub secret: Scalar,
   pub blinding_factor: Scalar,
 }
 
 impl Decommitment {
   pub fn new(
-    secret: &Point,
+    secret: &Scalar,
     blinding_factor: &Scalar,
   ) -> Self {
     Self {
-      secret: m.clone(),
-      blinding_factor: r.clone(),
+      secret: secret.clone(),
+      blinding_factor: blinding_factor.clone(),
     }
   }
 
@@ -56,8 +56,8 @@ impl CommitmentPair {
 
 #[derive(Debug, Copy, Clone)]
 pub struct PedersenCommitment {
-  g: Point,
-  h: Point,
+  pub g: Point,
+  pub h: Point,
 }
 
 impl PedersenCommitment {
@@ -78,7 +78,7 @@ impl PedersenCommitment {
   ) -> CommitmentPair {
     let U_i = &self.g * secret;
     let comm = &U_i + &self.h * blinding_factor;
-    let decomm = Decommitment::new(&U_i, blinding_factor);
+    let decomm = Decommitment::new(secret, blinding_factor);
 
     CommitmentPair::new(comm, decomm)
   }
@@ -88,10 +88,10 @@ impl PedersenCommitment {
     comm: &Point,
     decomm: &Decommitment,
   ) -> bool {
-    let U_i = &self.g * decom.secret;
-    let comm_prime = &U_i + &self.h * decom.blinding_factor;
+    let U_i = self.g * decomm.secret;
+    let comm_prime = &U_i + &self.h * decomm.blinding_factor;
 
-    comm == comm_prime
+    comm == &comm_prime
   }
 }
 
