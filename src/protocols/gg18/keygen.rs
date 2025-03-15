@@ -7,11 +7,6 @@ use crate::building_block::{
     Paillier,
     PublicKey,
   },
-  pedersen_secp256k1::{
-    // CommitmentPair,
-    Decommitment,
-    PedersenCommitment,
-  },
   secp256k1::{
     jacobian_point::JacobianPoint as Point,
     scalar::Scalar,
@@ -25,11 +20,16 @@ use crate::protocols::gg18::{
     UnicastId,
     UnicastDest,
   },
+  pedersen_secp256k1::{
+    // CommitmentPair,
+    Decommitment,
+    PedersenCommitment,
+  },
 };
 use std::sync::Arc;
 
-pub struct Party {
-  num_parties: usize,
+pub struct KeyGenerator {
+  num_generators: usize,
   generator_id: u32,
   network: Arc<Network>,
   x_i: Option<Scalar>, // shard private key
@@ -44,14 +44,14 @@ const A_I_BROADCAST: BroadcastId = BroadcastId(5);
 
 const P_I_UNICAST: UnicastId = UnicastId(1);
 
-impl Party {
+impl KeyGenerator {
   pub fn new(
-    num_parties: usize,
+    num_generators: usize,
     generator_id: u32,
     network: Arc<Network>,
   ) -> Self {
     Self {
-      num_parties,
+      num_generators,
       generator_id,
       network,
       x_i: None,
@@ -165,7 +165,7 @@ impl Party {
 
     // evaluate the polynomial at the points for other parties
     // and send the results to them
-    for i in 0..self.num_parties {
+    for i in 0..self.num_generators {
       let i = i as u32;
       if i == self.generator_id {
         continue;
@@ -182,7 +182,7 @@ impl Party {
     // construct p_is receiving missing p_is from other parties
     let p_is = {
       let mut p_is = vec![];
-      for i in 0..self.num_parties {
+      for i in 0..self.num_generators {
         let i = i as u32;
         if i == self.generator_id {
           let p_i = p_i(i + 1);
@@ -234,18 +234,22 @@ mod tests {
   #[tokio::test]
   async fn test_key_gen() {
     let network = Arc::new(Network::new(3));
-    let num_parties = 3;
+    let num_generators = 3;
 
-    let mut parties = vec![];
-    for party_id in 0..3 {
-      let party = Party::new(num_parties, party_id, Arc::clone(&network));
-      parties.push(party);
+    let mut generators = vec![];
+    for generator_id in 0..3 {
+      let generator = KeyGenerator::new(
+        num_generators,
+        generator_id,
+        Arc::clone(&network),
+      );
+      generators.push(generator);
     }
 
     let mut handles = vec![];
-    for mut party in parties {
+    for mut generator in generators {
       handles.push(spawn(async move {
-        party.generate_key().await;
+        generator.generate_key().await;
       }));
     }
 
@@ -254,3 +258,4 @@ mod tests {
     }
   }
 }
+
