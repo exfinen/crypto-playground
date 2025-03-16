@@ -471,42 +471,38 @@ mod tests {
   #[tokio::test]
   async fn test_key_gen() {
     let network = Arc::new(Network::new(3));
-    let num_parties = 3;
+    let num_bits = 256;
     let paillier_n = Integer::from(421); // TODO fix this
 
-    let player_a = Signer::new(
-      num_parties,
+    let mut signer_a = Signer::new(
+      SignerId::A,
+      num_bits,
       &paillier_n,
       Arc::clone(&network),
-      PlayerId::A,
     );
-    let player_b = Signer::new(
-      num_parties,
+    let mut signer_b = Signer::new(
+      SignerId::B,
+      num_bits,
       &paillier_n,
       Arc::clone(&network),
-      PlayerId::B,
     );
-    let players = vec![
-      player_a,
-      player_b,
-    ];
     
-    let m = "test";
-    let omega_a = Scalar::from(1); // TODO use the value from the key
-    let omega_b = Scalar::from(2);
+    let m = Scalar::from(123u8);
+    let omega_a = Scalar::from(1u8); // TODO use the value from the key
+    let omega_b = Scalar::from(2u8);
 
     let handles = vec![
       spawn(async move {
-        player_a.create_signature(
-          m,
-          omega_a,
-        ).await;
+        signer_a.create_signature(
+          &m,
+          &omega_a,
+        ).await.unwrap();
       }),
       spawn(async move {
-        player_b.create_signature(
-          m,
-          omega_b,
-        ).await;
+        signer_b.create_signature(
+          &m,
+          &omega_b,
+        ).await.unwrap();
       }),
     ];
 
