@@ -3,7 +3,12 @@
 #![allow(dead_code)]
 
 use crate::{
-  building_block::{
+  building_block::secp256k1::{
+    affine_point::AffinePoint,
+    jacobian_point::JacobianPoint,
+    scalar::Scalar,
+  },
+  protocols::gg18::{
     mta::{
       Alice,
       Bob,
@@ -13,13 +18,6 @@ use crate::{
     pedersen_secp256k1::{
       CommitmentPair, Decommitment, PedersenCommitment
     },
-    secp256k1::{
-      affine_point::AffinePoint,
-      jacobian_point::JacobianPoint,
-      scalar::Scalar,
-    },
-  },
-  protocols::gg18::{
     network::{
       BroadcastId,
       Network,
@@ -41,6 +39,7 @@ pub struct Signer {
   num_bits: u32,
   paillier_n: Integer,
   network: Arc<Network>,
+  q: Integer,
 }
 
 const UNICAST_TO_SIGNER_A: UnicastId = UnicastId(1);
@@ -51,13 +50,13 @@ const D_I_BROADCAST: BroadcastId = BroadcastId(12);
 const DELTA_I_BROADCAST: BroadcastId = BroadcastId(13);
 const S_I_COMM_BROADCAST: BroadcastId = BroadcastId(14);
 
-macro_rules! define_integer_wrappers {
+macro_rules! define_scalar_wrappers {
   ($($name:ident),*) => {
     $(
-      pub struct $name(pub Integer);
+      pub struct $name(pub Scalar);
 
       impl Deref for $name {
-        type Target = Integer;
+        type Target = Scalar;
 
         fn deref(&self) -> &Self::Target {
           &self.0
@@ -66,7 +65,7 @@ macro_rules! define_integer_wrappers {
     )*
   };
 }
-define_integer_wrappers!(K_i, Gamma_i, Delta_i, Sigma_i);
+define_scalar_wrappers!(K_i, Gamma_i, Delta_i, Sigma_i);
 
 impl Signer {
   pub fn new(
@@ -75,11 +74,17 @@ impl Signer {
     paillier_n: &Integer,
     network: Arc<Network>,
   ) -> Self {
+    // secp256k1 group order
+    let q = Integer::from_str_radix(
+      "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+      16,
+    ).unwrap();
     Self {
       signer_id,
       num_bits,
       paillier_n: paillier_n.clone(),
       network,
+      q,
     }
   }
 
@@ -87,13 +92,13 @@ impl Signer {
     -> (K_i, Gamma_i, Vec<JacobianPoint>, CommitmentPair, PedersenCommitment) {
 
     // select k_i and gamma_i in Z_q and broadcasts C_i
-    let k_i = Integer::from(Scalar::rand());
-    let gamma_i = Integer::from(Scalar::rand());
+    let k_i = Scalar::rand();
+    let gamma_i = Scalar::rand();
     
     // Computes [C_i, D_i] = Com(gamma_i * G)
     let pedersen = PedersenCommitment::new();
     let blinding_factor = &Scalar::rand();
-    let comm_pair = pedersen.commit(&Scalar::from(&gamma_i), blinding_factor);
+    let comm_pair = pedersen.commit(&gamma_i, blinding_factor);
 
     // broadcast C_i
     self.network.broadcast(
@@ -113,14 +118,14 @@ impl Signer {
   pub async fn perfrom_mta_as_alice(
     &mut self,
     alice_id: &SignerId,
-    additive_share: &Integer,
-  ) -> Integer {
+    additive_share: &Scalar,
+  ) -> Scalar {
     // TODO use this to get q, q^3, and q^5 from n
     let _mta = MtA::new(&self.paillier_n);
 
     let alice = Alice::new(
       self.num_bits,
-      additive_share,
+      &additive_share.into(),
     );
  
     let bob_id = &alice_id.the_other();
@@ -166,14 +171,13 @@ impl Signer {
     ).unwrap();
 
     // Calculate multiplicative share
-    alpha + beta
+    (alpha + beta).into()
   }
 
   pub async fn perfrom_MtA_as_Bob(
     &mut self,
     bob_id: &SignerId,
-    paillier_q: &Integer,
-    additive_share: &Integer,
+    additive_share: &Scalar,
   ) {
     let alice_id = &bob_id.the_other();
 
@@ -199,10 +203,10 @@ impl Signer {
     // Calculate C_B, beta, and range proofs
     let bob = Bob::new(
       &c_a,
-      paillier_q,
+      &self.q,
       &pk,
       &rp_a_lt_q3,
-      &additive_share,
+      &additive_share.into(),
     );
 
     // Send C_b, beta, and range proofs to Alice
@@ -219,46 +223,42 @@ impl Signer {
 
   pub async fn run_phase_2_Player_A(
     &mut self,
-    paillier_q: &Integer,
-    k_i: &Integer,
-    gamma_i: &Integer,
-    omega_i: &Integer,
+    k_i: &Scalar,
+    gamma_i: &Scalar,
+    omega_i: &Scalar,
   ) -> (Delta_i, Sigma_i) {
-    let k_i_gamma_i = self.perfrom_mta_as_alice(
+    let k_i_gamma_i: Scalar = self.perfrom_mta_as_alice(
       &SignerId::A,
-      &k_i,
-    ).await; 
+      k_i,
+    ).await.into(); 
 
-    let k_i_omega_i = self.perfrom_mta_as_alice(
+    let k_i_omega_i: Scalar = self.perfrom_mta_as_alice(
       &SignerId::A,
-      &k_i,
-    ).await; 
+      k_i,
+    ).await.into(); 
 
-    self.perfrom_MtA_as_Bob(&SignerId::A, paillier_q, &gamma_i).await;
-    self.perfrom_MtA_as_Bob(&SignerId::A, paillier_q, &omega_i).await;
+    self.perfrom_MtA_as_Bob(&SignerId::A, gamma_i).await;
+    self.perfrom_MtA_as_Bob(&SignerId::A, omega_i).await;
 
-    let delta_i: Integer = (k_i * gamma_i + &k_i_gamma_i).into();
-    let sigma_i: Integer = (k_i * omega_i + &k_i_omega_i).into();
+    let delta_i = k_i * gamma_i + &k_i_gamma_i;
+    let sigma_i = k_i * omega_i + &k_i_omega_i;
 
     (Delta_i(delta_i), Sigma_i(sigma_i))
   }
 
   pub async fn run_phase_2_Player_B(
     &mut self,
-    paillier_q: &Integer,
-    k_i: &Integer,
-    gamma_i: &Integer,
-    omega_i: &Integer,
+    k_i: &Scalar,
+    gamma_i: &Scalar,
+    omega_i: &Scalar,
   ) -> (Delta_i, Sigma_i) {
     self.perfrom_MtA_as_Bob(
       &SignerId::B,
-      paillier_q,
       gamma_i,
     ).await;
 
     self.perfrom_MtA_as_Bob(
       &SignerId::B,
-      paillier_q,
       omega_i,
     ).await;
 
@@ -272,8 +272,8 @@ impl Signer {
       k_i,
     ).await; 
      
-    let delta_i: Integer = (k_i * gamma_i + &k_i_gamma_i).into();
-    let sigma_i: Integer = (k_i * omega_i + &k_i_omega_i).into();
+    let delta_i = k_i * gamma_i + &k_i_gamma_i;
+    let sigma_i = k_i * omega_i + &k_i_omega_i;
 
     (Delta_i(delta_i), Sigma_i(sigma_i))
   }
@@ -281,15 +281,15 @@ impl Signer {
   pub async fn run_phase_3(
     &mut self,
     delta_i: &Delta_i,
-  ) -> Vec<Integer> {
+  ) -> Vec<Scalar> {
     // broadcast delta_i
     self.network.broadcast(
       &DELTA_I_BROADCAST,
-      &bincode::serialize::<Integer>(&delta_i).unwrap(),
+      &delta_i.serialize(),
     ).await;
 
     // correct all broadcast delta_is
-    let delta_is: Vec<Integer> = {
+    let delta_is: Vec<Scalar> = {
       let xs = self.network.receive_broadcasts(DELTA_I_BROADCAST).await;
       xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
     };
@@ -318,7 +318,7 @@ impl Signer {
 
     // Decommit the committed value along with the blinding factor
     for comm_pair in C_is.iter().zip(&D_is) {
-      let (C_i, D_i) = comm_pair;
+      let (C_i, D_i) = &comm_pair;
       if !pedersen.verify(C_i, D_i) {
         return Err("Gamma decommitment failed".to_string());
       }
@@ -347,13 +347,12 @@ impl Signer {
 
   pub async fn run_phase_5(
     &mut self,
-    comm_pair: &CommitmentPair,
     k_i: &K_i,
     sigma_i: &Sigma_i,
-    m: &Integer,
+    m: &Scalar,
     r: &Scalar,
-  ) -> Scalar {
-    let s_i = m * k_i + r * sigma_i;
+  ) -> Result<Scalar,String> {
+    let s_i = m * k_i.0 + r * sigma_i.0;
 
     // generate a commitment of s_i and broadcast
     let pedersen = PedersenCommitment::new();
@@ -373,8 +372,7 @@ impl Signer {
 
     // Verify the commitments
     for comm_pair in comm_pairs.iter() {
-      let (C_i, D_i) = comm_pair;
-      if !pedersen.verify(C_i, D_i) {
+      if !pedersen.verify(&comm_pair.comm, &comm_pair.decomm) {
         return Err("s_i decommitment failed".to_string());
       }
     }
@@ -391,42 +389,51 @@ impl Signer {
     omega_i: &Scalar, // additive component of the private key
   ) -> Result<Signature, String> {
     // Phase 1
-    let (k_i, gamma_i, C_is, comm_pair, pedersen) =
-      Self::phase1(Arc::clone(&self.network)).await;
+    let (k_i, gamma_i, C_is, comm_pair, pedersen) = self.run_phase_1().await;
 
     // Phase 2
     let (delta_i, sigma_i) = {
-      if self.player_id == PlayerId::A {
-        Self::run_phase_2_Player_A(&k_i, &gamma_i).await
+      if self.signer_id == SignerId::A {
+        self.run_phase_2_Player_A(
+          &k_i,
+          &gamma_i,
+          omega_i,
+        ).await
       } else {
-        Self::run_phase_2_Player_B(&k_i, &gamma_i).await
+        self.run_phase_2_Player_B(
+          &k_i,
+          &gamma_i,
+          omega_i,
+        ).await
       }
     };
 
     // Phase 3
     let delta_inv = {
-      let delta_is = Self::run_phase_3(&delta_i).await;
+      let delta_is = self.run_phase_3(&delta_i).await;
       let aggr_delta = delta_is.iter().fold(Scalar::zero(), |acc, c_i| acc + c_i);
-      aggr_delta.inv().unwrap() // TODO mod by group order
+      aggr_delta.inv()
     };
 
     // Phase 4
-    let r = Self::run_phase_4(
+    let r = self.run_phase_4(
       &pedersen,
       &comm_pair.decomm,
       &C_is,
       &delta_inv,
-    ).await;
+    ).await?;
 
     // Phase 5
-    let s = Self::run_phase_5(
-      &comm_pair,
+    let s = self.run_phase_5(
+      &k_i,
       &sigma_i,
-    ).await;
+      m,
+      &r,
+    ).await?;
 
     let sig = Signature {
-      r: Scalar::zero(),
-      s: Scalar::zero(),
+      r: r.clone(),
+      s: s.clone(),
     };
     Ok(sig)
   }
@@ -467,13 +474,13 @@ mod tests {
     let num_parties = 3;
     let paillier_n = Integer::from(421); // TODO fix this
 
-    let player_a = Player::new(
+    let player_a = Signer::new(
       num_parties,
       &paillier_n,
       Arc::clone(&network),
       PlayerId::A,
     );
-    let player_b = Player::new(
+    let player_b = Signer::new(
       num_parties,
       &paillier_n,
       Arc::clone(&network),

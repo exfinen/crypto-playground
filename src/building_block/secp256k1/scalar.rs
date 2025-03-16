@@ -205,31 +205,44 @@ impl From<[u8; 32]> for Scalar {
   }
 }
 
-impl From<&Integer> for Scalar {
-  fn from(i: &Integer) -> Self {
-    let mut s = Scalar::new();
-    let mut buf = i.to_digits::<u8>(Order::MsfBe);
-    
-    // make buf 32 bytes
-    if buf.len() > 32 {
-      buf.drain(0..(buf.len() - 32));
-    } else if buf.len() < 32 {
-      let mut padded_buf = vec![0u8; 32 - buf.len()];
-      padded_buf.extend_from_slice(&buf);
-      buf = padded_buf;
+macro_rules! impl_from_for_scalar { 
+  ($input:ty) => {
+    impl From<$input> for Scalar {
+      fn from(i: $input) -> Self {
+        let mut s = <Scalar>::new();
+        let mut buf = i.to_digits::<u8>(Order::MsfBe);
+
+        // Ensure buffer is exactly 32 bytes
+        if buf.len() > 32 {
+          buf.drain(0..(buf.len() - 32)); // Trim excess leading bytes
+        } else if buf.len() < 32 {
+          let mut padded_buf = vec![0u8; 32 - buf.len()];
+          padded_buf.extend_from_slice(&buf);
+          buf = padded_buf;
+        }
+
+        let mut buf_array = [0u8; 32];
+        buf_array.copy_from_slice(&buf);
+        unsafe {
+          scalar_set_b32(&mut s, buf_array.as_ptr());
+        }
+        s
+      }
     }
-    
-    let mut buf_array = [0u8; 32];
-    buf_array.copy_from_slice(&buf);
-    unsafe {
-      scalar_set_b32(&mut s, buf_array.as_ptr());
-    }
-    s
-  }
+  };
 }
+impl_from_for_scalar!(Integer);
+impl_from_for_scalar!(&Integer);
 
 impl From<Scalar> for Integer {
   fn from(s: Scalar) -> Self {
+    let buf = s.serialize();
+    Integer::from_digits(&buf, Order::MsfBe)
+  }
+}
+
+impl From<&Scalar> for Integer {
+  fn from(s: &Scalar) -> Self {
     let buf = s.serialize();
     Integer::from_digits(&buf, Order::MsfBe)
   }

@@ -7,7 +7,7 @@ use rug::{
   Complete,
 };
 use rug::Integer;
-use crate::building_block::paillier::{
+use crate::protocols::gg18::paillier::{
   GCalcMethod,
   Paillier,
   PublicKey,

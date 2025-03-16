@@ -6,7 +6,6 @@ pub mod garbled_table;
 pub mod gate_type;
 pub mod ot;
 pub mod output_decoding_table;
-pub mod paillier;
 pub mod secp256k1;
 pub mod wire;
 pub mod wires;

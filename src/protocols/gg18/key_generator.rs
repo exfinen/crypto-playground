@@ -1,16 +1,9 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
-use crate::building_block::{
-  paillier::{
-    GCalcMethod,
-    Paillier,
-    PublicKey,
-  },
-  secp256k1::{
-    jacobian_point::JacobianPoint as Point,
-    scalar::Scalar,
-  },
+use crate::building_block::secp256k1::{
+  jacobian_point::JacobianPoint as Point,
+  scalar::Scalar,
 };
 // use rug::Integer;
 use crate::protocols::gg18::{
@@ -19,6 +12,11 @@ use crate::protocols::gg18::{
     Network,
     UnicastId,
     UnicastDest,
+  },
+  paillier::{
+    GCalcMethod,
+    Paillier,
+    PublicKey,
   },
   pedersen_secp256k1::{
     // CommitmentPair,
