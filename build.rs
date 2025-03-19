@@ -3,6 +3,8 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
+  println!("cargo:rustc-env=MACOSX_DEPLOYMENT_TARGET=14.2");
+
   let cargo_target_dir: String =
     env::var("CARGO_TARGET_DIR")
       .unwrap_or_else(|_| "target".to_string());

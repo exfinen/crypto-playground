@@ -4,11 +4,25 @@
 use std::{
   cmp::PartialEq,
   fmt,
-  ffi::c_int,
   ops::{Add, AddAssign, Sub, Mul, MulAssign},
-  os::raw::c_uchar,
 };
-use crate::building_block::secp256k1::field::Field;
+use crate::building_block::secp256k1::{
+  ffi::{
+    fe_get_b32,
+    fe_normalize,
+    scalar_add,
+    scalar_eq,
+    scalar_get_b32,
+    scalar_inverse,
+    scalar_is_zero,
+    scalar_mul,
+    scalar_negate,
+    scalar_sub,
+    scalar_set_b32,
+    scalar_set_int,
+  },
+  field::Field,
+};
 use rand::{
   rngs::OsRng,
   RngCore,
@@ -21,44 +35,6 @@ use serde::{
   Serialize,
   Deserialize,
 };
-
-extern "C" {
-  #[link_name = "secp256k1_export_scalar_set_int"]
-  fn scalar_set_int(r: *mut Scalar, n: u32);
-
-  #[link_name = "secp256k1_export_scalar_inverse"]
-  fn scalar_inverse(r: *mut Scalar, a: *const Scalar);
-
-  #[link_name = "secp256k1_export_scalar_is_zero"]
-  fn scalar_is_zero(ra: *const Scalar) -> c_int;
-
-  #[link_name = "secp256k1_export_scalar_negate"]
-  fn scalar_negate(r: *mut Scalar, a: *const Scalar);
-
-  #[link_name = "secp256k1_export_scalar_eq"]
-  fn scalar_eq(a: *const Scalar, b: *const Scalar) -> c_int;
-
-  #[link_name = "secp256k1_export_scalar_set_b32"]
-  fn scalar_set_b32(r: *mut Scalar, buf: *const u8);
-
-  #[link_name = "secp256k1_export_scalar_get_b32"]
-  fn scalar_get_b32(buf: *mut u8, a: *const Scalar);
-
-  #[link_name = "secp256k1_export_scalar_add"]
-  fn scalar_add(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
-
-  #[link_name = "secp256k1_export_scalar_sub"]
-  fn scalar_sub(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
-
-  #[link_name = "secp256k1_export_scalar_mul"]
-  fn scalar_mul(r: *mut Scalar, a: *const Scalar, b: *const Scalar);
-
-  #[link_name = "secp256k1_fe_normalize"]
-  fn fe_normalize(a: *const Field);
-
-  #[link_name = "secp256k1_fe_get_b32"]
-  fn fe_get_b32(r: *mut c_uchar, a: *const Field);
-}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]

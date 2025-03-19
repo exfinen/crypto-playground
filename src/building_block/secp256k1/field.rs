@@ -1,13 +1,12 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
-use std::{
-  // cmp::PartialEq,
-  // fmt,
-  ffi::c_int,
-  // ops::{Add, AddAssign, Sub, Mul, MulAssign},
-  os::raw::c_uchar,
-};
+//use std::{
+//  // cmp::PartialEq,
+//  // fmt,
+//  // ops::{Add, AddAssign, Sub, Mul, MulAssign},
+//  os::raw::c_uchar,
+//};
 // use rand::{
 //   rngs::OsRng,
 //   RngCore,
@@ -16,44 +15,21 @@ use std::{
 //   integer::Order,
 //   Integer,
 // };
+use crate::building_block::secp256k1::{
+  ffi::{
+//    fe_add,
+//    fe_eq,
+//    fe_get_b32,
+//    fe_is_equal,
+    fe_inv,
+  },
+};
 use serde::{
   Serialize,
   Deserialize,
 };
 
 pub type Fe5x52 = [u64; 5];
-
-extern "C" {
-  #[link_name = "secp256k1_fe_add"]
-  fn fe_add(r: *mut Field, a: *const Field, b: *const Field);
-
-  #[link_name = "secp256k1_fe_equal"]
-  fn fe_eq(a: *const Field, b: *const Field) -> c_int;
-
-  #[link_name = "secp256k1_fe_get_b32"]
-  fn fe_get_b32(r: *mut c_uchar, a: *const Field);
-
-  #[link_name = "secp256k1_fe_equal"]
-  fn fe_is_equal(a: *const Field, b: *const Field) -> c_int;
-
-  #[link_name = "secp256k1_fe_inv"]
-  fn fe_inv(r: *mut Field, a: *const Field);
-
-  #[link_name = "secp256k1_fe_is_zero"]
-  fn fe_is_zero(a: *const Field) -> c_int;
-
-  #[link_name = "secp256k1_fe_mul"]
-  fn fe_mul(r: *mut Field, a: *const Field, b: *const Field);
-
-  #[link_name = "secp256k1_fe_normalize"]
-  fn fe_normalize(a: *const Field);
-
-  #[link_name = "secp256k1_fe_set_int"]
-  fn fe_set_int(r: *mut Field, n: u32);
-
-  #[link_name = "secp256k1_fe_sqr"]
-  fn fe_sq(r: *mut Field, a: *const Field);
-}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -73,19 +49,16 @@ impl Field {
       n: [0; 5],
     }
   }
-/*
-  pub fn zero() -> Self {
-    Scalar::from(0u32)
-  }
 
   pub fn inv(&self) -> Self {
-    let mut r = Scalar::new();
+    let mut r = Field::new();
     unsafe {
-      scalar_inverse(&mut r, self);
+      fe_inv(&mut r, self);
     }
     r
   }
 
+/*
   pub fn neg(&self) -> Self {
     let mut r = Scalar::new();
     unsafe {

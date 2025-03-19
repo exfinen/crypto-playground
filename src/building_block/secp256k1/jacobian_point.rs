@@ -2,11 +2,17 @@
 #![allow(dead_code)]
 
 use std::{
+  cmp::PartialEq,
   ffi::c_int,
   ops::{Add, AddAssign, Mul},
-  cmp::PartialEq,
 };
 use crate::building_block::secp256k1::{
+  ffi::{
+    group_add,
+    group_mul,
+    group_eq,
+    group_get_base_point,
+  },
   field::{Field, Fe5x52},
   scalar::Scalar,
 };
@@ -14,20 +20,6 @@ use serde::{
   Serialize,
   Deserialize,
 };
-
-extern "C" {
-  #[link_name = "secp256k1_export_group_add"]
-  fn group_add(r: *mut JacobianPoint, a: *const JacobianPoint, b: *const JacobianPoint);
-
-  #[link_name = "secp256k1_export_group_ecmult"]
-  fn group_mul(r: *mut JacobianPoint, a: *const JacobianPoint, q: Scalar);
-
-  #[link_name = "secp256k1_export_group_eq"]
-  fn group_eq(a: *const JacobianPoint, b: *const JacobianPoint) -> c_int;
-
-  #[link_name = "secp256k1_export_group_get_base_point"]
-  fn group_get_base_point(r: *mut JacobianPoint);
-}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
