@@ -114,53 +114,6 @@ impl Scalar {
   }
 }
 
-//impl Serialize for Scalar {
-//  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//  where S: Serializer {
-//    let bytes = self.serialize();
-//    serializer.serialize_bytes(&bytes)
-//  }
-//}
-//
-//impl<'de> Deserialize<'de> for Scalar {
-//  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//  where D: Deserializer<'de> {
-//    struct ScalarVisitor;
-//
-//    impl<'de> Visitor<'de> for ScalarVisitor {
-//      type Value = Scalar;
-//
-//      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//        formatter.write_str("a secp256k1 scalar")
-//      }
-//
-//      fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-//      where E: de::Error {
-//        println!("----> visit_bytes: {:?}", v.len());
-//        Scalar::deserialize(v).map_err(E::custom)
-//      }
-//
-//      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-//      where A: SeqAccess<'de> {
-//        // Collect exactly 32 bytes from the sequence.
-//        let mut bytes = [0u8; 32];
-//        for i in 0..32 {
-//          bytes[i] = seq.next_element()?
-//            .ok_or_else(|| de::Error::invalid_length(i, &self))?;
-//        }
-//        // Ensure that there are no extra elements.
-//        if let Some(_) = seq.next_element::<u8>()? {
-//          return Err(de::Error::custom("expected exactly 32 bytes for Scalar"));
-//        }
-//        println!("----> visit_seq: {:?}", bytes.len());
-//        Scalar::deserialize(&bytes).map_err(de::Error::custom)
-//      }
-//    }
-//
-//    deserializer.deserialize_bytes(ScalarVisitor)
-//  }
-//}
-
 impl From<Field> for Scalar {
   fn from(field: Field) -> Self {
     let mut scalar = Scalar::new();
