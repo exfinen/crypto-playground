@@ -30,6 +30,7 @@ pub struct KeyGenerator {
   num_generators: usize,
   generator_id: u32,
   network: Arc<Network>,
+  pedersen: Arc<PedersenCommitment>,
   x_i: Option<Scalar>, // shard private key
   X_i: Option<Point>, // shard public key
 }
@@ -47,35 +48,41 @@ impl KeyGenerator {
     num_generators: usize,
     generator_id: u32,
     network: Arc<Network>,
+    pedersen: Arc<PedersenCommitment>,
   ) -> Self {
     Self {
       num_generators,
       generator_id,
       network,
+      pedersen,
       x_i: None,
       X_i: None,
     }
   }
 
   pub async fn generate_key(&mut self) {
+    let pedersen = &self.pedersen;
+
     //// Phase 1
     let u_i = Scalar::rand();
 
-    let pedersen = PedersenCommitment::new();
     let comm_pair = {
       let blinding_factor = &Scalar::rand();
       pedersen.commit(&u_i, blinding_factor)
     };
 
     // broadcast KGC_i commitment
+    let KGC_i = (self.generator_id, comm_pair.comm);
     self.network.broadcast(
       &KGC_BROADCAST,
-      &comm_pair.comm.serialize(),
+      &bincode::serialize(&KGC_i).unwrap(),
     ).await;
 
-    let KGC_is: Vec<Point> = {
+    let mut KGC_is: Vec<(u32, Point)> = {
       let xs = self.network.receive_broadcasts(KGC_BROADCAST).await;
-      xs.iter().map(|x| Point::deserialize(&x)).collect()
+      xs.iter().map(|x| {
+        bincode::deserialize(&x).expect("Failed to deserialize KGC_i")
+      }).collect()
     };
 
     // broadcast paillier pk: E_i
@@ -106,13 +113,15 @@ impl KeyGenerator {
     //// Phase 2
 
     // broadcast KGD_i -> obtains U_i
+    let KGD_i = (self.generator_id, comm_pair.decomm);
+
     self.network.broadcast(
       &DECOMM_BROADCAST,
-      &comm_pair.decomm.serialize(),
+      &bincode::serialize(&KGD_i).unwrap(),
     ).await;
 
     // receive KGD_i from other parties
-    let KGD_is: Vec<Decommitment> = {
+    let mut KGD_is: Vec<(u32, Decommitment)> = {
       let xs = self.network.receive_broadcasts(DECOMM_BROADCAST).await;
       xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
     };
@@ -124,11 +133,21 @@ impl KeyGenerator {
       let g = &pedersen.g;
       let h = &pedersen.h;
 
-      let mut pk = Point::point_at_infinity();
+      // sort KCG_is and KGD_is by id
+      KGC_is.sort_by_key(|(id, _)| *id);
+      KGD_is.sort_by_key(|(id, _)| *id);
+      if KGC_is.len() != KGD_is.len() {
+        panic!("Phase 2: number of commitments and decommitments don't match");
+      }
 
+      let mut pk = Point::point_at_infinity();
       let mut U_is = vec![];
-      for comm_decomm in KGC_is.iter().zip(KGD_is.iter())  {
-        let (comm, decomm) = comm_decomm;
+
+      for x in KGC_is.iter().zip(KGD_is.iter())  {
+        let ((comm_id, comm),(decomm_id, decomm)) = x;
+        if comm_id != decomm_id {
+          panic!("Phase 2: IDs of commitment and decommitment don't match");
+        }
         let comm_rec = g * decomm.secret + h * decomm.blinding_factor;
         if &comm_rec != comm {
           panic!("Phase 2: Invalid commitment");
@@ -174,7 +193,7 @@ impl KeyGenerator {
         self.generator_id,
         i as u32,
       );
-      self.network.unicast(&dest, &result.serialize()).await;
+      self.network.unicast(&dest, &result.secp256k1_serialize()).await;
     }
 
     // construct p_is receiving missing p_is from other parties
@@ -192,7 +211,7 @@ impl KeyGenerator {
             self.generator_id,
           );
           let ser_p_i: Vec<u8> = self.network.receive_unicast(&dest).await;
-          let p_i = Scalar::deserialize(&ser_p_i).unwrap();
+          let p_i = Scalar::secp256k1_deserialize(&ser_p_i).unwrap();
           p_is.push(p_i);
         }
       }
@@ -233,6 +252,7 @@ mod tests {
   async fn test_key_gen() {
     let network = Arc::new(Network::new(3));
     let num_generators = 3;
+    let pedersen = Arc::new(PedersenCommitment::new());
 
     let mut generators = vec![];
     for generator_id in 0..3 {
@@ -240,6 +260,7 @@ mod tests {
         num_generators,
         generator_id,
         Arc::clone(&network),
+        Arc::clone(&pedersen),
       );
       generators.push(generator);
     }

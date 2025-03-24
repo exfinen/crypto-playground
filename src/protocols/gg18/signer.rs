@@ -285,7 +285,7 @@ impl Signer {
     // broadcast delta_i
     self.network.broadcast(
       &DELTA_I_BROADCAST,
-      &delta_i.serialize(),
+      &delta_i.secp256k1_serialize(),
     ).await;
 
     // correct all broadcast delta_is
@@ -469,7 +469,7 @@ mod tests {
   use std::sync::Arc;
 
   #[tokio::test]
-  async fn test_key_gen() {
+  async fn test_signing() {
     let network = Arc::new(Network::new(3));
     let num_bits = 256;
     let paillier_n = Integer::from(421); // TODO fix this

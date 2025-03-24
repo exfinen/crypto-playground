@@ -79,7 +79,8 @@ impl PedersenCommitment {
     let U_i = &self.g * secret;
     let comm = &U_i + &self.h * blinding_factor;
     let decomm = Decommitment::new(secret, blinding_factor);
-
+    let comm2 = &self.g * decomm.secret + &self.h * decomm.blinding_factor;
+    assert_eq!(comm, comm2);
     CommitmentPair::new(comm, decomm)
   }
 

@@ -32,8 +32,15 @@ use rug::{
   Integer,
 };
 use serde::{
-  Serialize,
+  //de::{
+  //  self,
+  //  SeqAccess,
+  //  Visitor,
+  //},
   Deserialize,
+  //Deserializer,
+  Serialize,
+  //Serializer,
 };
 
 #[repr(C)]
@@ -87,7 +94,7 @@ impl Scalar {
     "ab".to_string()
   }
 
-  pub fn serialize(&self) -> Vec<u8> {
+  pub fn secp256k1_serialize(&self) -> Vec<u8> {
     let mut buf = [0u8; 32];
     unsafe {
       scalar_get_b32(buf.as_mut_ptr(), self);
@@ -95,9 +102,9 @@ impl Scalar {
     buf.to_vec()
   }
 
-  pub fn deserialize(buf: &[u8]) -> Result<Self, String> {
+  pub fn secp256k1_deserialize(buf: &[u8]) -> Result<Self, String> {
     if buf.len() != 32 {
-      return Err("Serialized Scalar should be 32-byte long".to_string());
+      return Err(format!("Serialized Scalar should be 32-byte long, but got is {}-byte long", buf.len()));
     }
     let mut s = Scalar::new();
     unsafe {
@@ -106,6 +113,53 @@ impl Scalar {
     Ok(s)
   }
 }
+
+//impl Serialize for Scalar {
+//  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//  where S: Serializer {
+//    let bytes = self.serialize();
+//    serializer.serialize_bytes(&bytes)
+//  }
+//}
+//
+//impl<'de> Deserialize<'de> for Scalar {
+//  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//  where D: Deserializer<'de> {
+//    struct ScalarVisitor;
+//
+//    impl<'de> Visitor<'de> for ScalarVisitor {
+//      type Value = Scalar;
+//
+//      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+//        formatter.write_str("a secp256k1 scalar")
+//      }
+//
+//      fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+//      where E: de::Error {
+//        println!("----> visit_bytes: {:?}", v.len());
+//        Scalar::deserialize(v).map_err(E::custom)
+//      }
+//
+//      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+//      where A: SeqAccess<'de> {
+//        // Collect exactly 32 bytes from the sequence.
+//        let mut bytes = [0u8; 32];
+//        for i in 0..32 {
+//          bytes[i] = seq.next_element()?
+//            .ok_or_else(|| de::Error::invalid_length(i, &self))?;
+//        }
+//        // Ensure that there are no extra elements.
+//        if let Some(_) = seq.next_element::<u8>()? {
+//          return Err(de::Error::custom("expected exactly 32 bytes for Scalar"));
+//        }
+//        println!("----> visit_seq: {:?}", bytes.len());
+//        Scalar::deserialize(&bytes).map_err(de::Error::custom)
+//      }
+//    }
+//
+//    deserializer.deserialize_bytes(ScalarVisitor)
+//  }
+//}
 
 impl From<Field> for Scalar {
   fn from(field: Field) -> Self {
@@ -212,14 +266,14 @@ impl_from_for_scalar!(&Integer);
 
 impl From<Scalar> for Integer {
   fn from(s: Scalar) -> Self {
-    let buf = s.serialize();
+    let buf = s.secp256k1_serialize();
     Integer::from_digits(&buf, Order::MsfBe)
   }
 }
 
 impl From<&Scalar> for Integer {
   fn from(s: &Scalar) -> Self {
-    let buf = s.serialize();
+    let buf = s.secp256k1_serialize();
     Integer::from_digits(&buf, Order::MsfBe)
   }
 }
