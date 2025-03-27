@@ -152,8 +152,9 @@ impl KeyGenerator {
         if &comm_rec != comm {
           panic!("Phase 2: Invalid commitment");
         }
-        pk = pk + *comm;
-        U_is.push(comm.clone());
+        let U_i = Point::get_base_point() * decomm.secret;
+        pk = pk + U_i;
+        U_is.push(U_i.clone());
       }
       (pk, U_is)
     };
@@ -167,51 +168,57 @@ impl KeyGenerator {
     // broadcast
     let A_i = {
       let g = Point::get_base_point();
-      g * a_i
+      let A_i = g * a_i;
+      (self.generator_id, A_i)
     };
+
     self.network.broadcast(
       &A_I_BROADCAST,
-      &A_i.serialize(),
+      &bincode::serialize(&A_i).unwrap(),
     ).await;
 
     // receive A_is of all parties including this party
-    let A_is: Vec<Point> = {
+    let A_is: Vec<(u32, Point)> = {
       let xs = self.network.receive_broadcasts(A_I_BROADCAST).await;
-      xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
+      let mut xs: Vec<(u32, Point)> = 
+        xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect();
+      xs.sort_by_key(|(id, _)| *id);
+      xs
     };
 
     // evaluate the polynomial at the points for other parties
     // and send the results to them
-    for i in 0..self.num_generators {
-      let i = i as u32;
-      if i == self.generator_id {
+    for id in 0..self.num_generators as u32 {
+      if id == self.generator_id {
         continue;
       }
-      let result: Scalar = p_i(i + 1);
+      let pt = id + 1;
+      let res = p_i(pt);
       let dest = UnicastDest::new(
         P_I_UNICAST,
         self.generator_id,
-        i as u32,
+        id,
       );
-      self.network.unicast(&dest, &result.secp256k1_serialize()).await;
+      let ser_res = bincode::serialize(&res).unwrap(); 
+      self.network.unicast(&dest, &ser_res).await;
     }
 
     // construct p_is receiving missing p_is from other parties
     let p_is = {
       let mut p_is = vec![];
-      for i in 0..self.num_generators {
-        let i = i as u32;
-        if i == self.generator_id {
-          let p_i = p_i(i + 1);
+      for id in 0..self.num_generators as u32 {
+        if id == self.generator_id {
+          let pt = id + 1;
+          let p_i = p_i(pt);
           p_is.push(p_i);
         } else {
           let dest = UnicastDest::new(
             P_I_UNICAST,
-            i,
+            id,
             self.generator_id,
           );
           let ser_p_i: Vec<u8> = self.network.receive_unicast(&dest).await;
-          let p_i = Scalar::secp256k1_deserialize(&ser_p_i).unwrap();
+          let p_i = bincode::deserialize(&ser_p_i).unwrap();
           p_is.push(p_i);
         }
       }
@@ -222,9 +229,10 @@ impl KeyGenerator {
     // to generate any of the shares
     let g = Point::get_base_point();
     for x in p_is.iter().zip(U_is.iter()).zip(A_is.iter()) {
-      let ((p_i, U_i), A_i) = x;
+      let ((p_i, U_i), (_, A_i)) = x;
       let lhs = g * p_i;
-      let rhs = U_i + A_i;
+      let pt = Scalar::from(self.generator_id + 1);
+      let rhs = U_i + A_i * pt;
       if lhs != rhs {
         panic!("Phase 2: Malformed polynomial found");
       }
@@ -237,7 +245,7 @@ impl KeyGenerator {
 
     // calculate shard public key
     self.X_i = Some(
-      pk + A_is.iter().fold(Point::point_at_infinity(), |acc, A_i| acc + A_i)
+      pk + A_is.iter().fold(Point::point_at_infinity(), |acc, (_, A_i)| acc + A_i)
     );
   }
 }
