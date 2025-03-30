@@ -3,7 +3,7 @@ use rand::{
   RngCore,
 };
 use rug::{
-  integer::IsPrime, rand::{MutRandState, RandState}, Assign, Complete, Integer
+  integer::IsPrime, rand::{MutRandState, RandState}, Complete, Integer
 };
 
 pub fn gen_random_binary_val() -> bool {
@@ -61,12 +61,10 @@ pub fn gen_random_prime(
   rng: &mut dyn MutRandState,
 ) -> Integer {
   let mut n = gen_random_number(num_bits, rng);
-
-  let num_ite = 25;
-  while n.is_probably_prime(num_ite) != IsPrime::Yes {
-    n.assign(gen_random_number(num_bits, rng));
+  if n.is_even() {
+    n += 1;
   }
-  n
+  n.next_prime()
 }
 
 #[cfg(test)]

@@ -30,10 +30,17 @@ impl Alice {
     num_bits: u32,
     a: &Integer,
   ) -> Alice {
-    let inst = Paillier::new(num_bits, GCalcMethod::Random);
+    let (p, q) = Paillier::gen_p_q(num_bits);
+    let inst = Paillier::new(
+      num_bits,
+      &p,
+      &q,
+      GCalcMethod::Random,
+    );
     let (pk, sk) = (inst.pk, inst.sk);
     let mut rng = get_32_byte_rng();
 
+    println!("Calling Alice::encrypt");
     let c_a = Paillier::encrypt(
       num_bits, &mut rng, a, &pk
     );
@@ -87,6 +94,7 @@ impl Bob {
       &mut rng,
     );
 
+    println!("Calling BNob::encrypt");
     let c_beta_prime = Paillier::encrypt(
       pk.n.significant_bits(),
       &mut rng,

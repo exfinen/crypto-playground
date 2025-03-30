@@ -43,6 +43,24 @@ pub struct PaillierInstance {
 }
 
 impl Paillier {
+  pub fn gen_p_q(num_n_bits: u32) -> (Integer, Integer) {
+    // generate distinct primes p and q
+    // s.t. p*q=n is equal to or above `num_n_bits` bits
+    let mut rng = get_32_byte_rng();
+    let num_pq_bits = num_n_bits / 2 + 10; // try to make p*q above 256 bits
+
+    loop {
+      let p = gen_random_prime(num_pq_bits, &mut rng);
+      let q = gen_random_prime(num_pq_bits, &mut rng);
+      if &p == &q { continue; }
+
+      let n: Integer = (&p * &q).into();
+      if n.significant_bits() >= num_n_bits {
+        break (p, q);
+      }
+    }
+  }
+
   // mod nn -> mod n
   fn L(u: &Integer, n: &Integer) -> Integer {
     let u_minus_1 = (u - 1u8).complete();
@@ -87,24 +105,20 @@ impl Paillier {
 
   pub fn new(
     num_bits: u32,
+    p: &Integer,
+    q: &Integer,
     g_calc_method: GCalcMethod,
   ) -> PaillierInstance {
+    if p == q {
+      panic!("p and q should be distinct primes");
+    }
     let mut rng = get_32_byte_rng();
 
-    // generate distinct primes p and q
-    let p = gen_random_prime(num_bits, &mut rng);
-    let q = loop {
-      let q = gen_random_prime(num_bits, &mut rng);
-      if &p != &q {
-        break q;
-      }
-    };
-
-    let n = Integer::from(&p * &q);
+    let n = Integer::from(p * q);
     let nn = (&n * &n).complete();
 
-    let p_minus_1 = (&p - 1u8).complete();
-    let q_minus_1 = (&q - 1u8).complete();
+    let p_minus_1 = (p - 1u8).complete();
+    let q_minus_1 = (q - 1u8).complete();
     let lambda = p_minus_1.lcm(&q_minus_1);
 
     let (g, mu) = {
@@ -139,8 +153,10 @@ impl Paillier {
     m: &Integer, // plaintext
     pk: &PublicKey,
   ) -> Integer {
+    println!("m: {}", m);
+    println!("pk.n: {}", pk.n);
     if m < &Integer::ZERO || m >= &pk.n {
-      panic!("m should be in additive group module n");
+      panic!("m is outside the range (0 <= m < n)");
     }
 
     let nn = &(&pk.n * &pk.n).complete();
@@ -230,7 +246,13 @@ mod tests {
     let num_bits = 64;
 
     for _ in 0..10 {
-      let inst = Paillier::new(num_bits, GCalcMethod::Random);
+      let (p, q) = Paillier::gen_p_q(num_bits);
+      let inst = Paillier::new(
+        num_bits,
+        &p,
+        &q,
+        GCalcMethod::Random
+      );
       let (pk, sk) = (&inst.pk, &inst.sk);
 
       let m = gen_random_number(num_bits, &mut rng) % &pk.n;
@@ -249,7 +271,13 @@ mod tests {
     let mut rng = get_32_byte_rng();
     let num_bits = 64;
 
-    let inst = Paillier::new(num_bits, GCalcMethod::Random);
+    let (p, q) = Paillier::gen_p_q(num_bits);
+    let inst = Paillier::new(
+      num_bits,
+      &p,
+      &q,
+      GCalcMethod::Random,
+    );
     let (pk, sk) = (&inst.pk, &inst.sk);
 
     let m1 = gen_random_number(num_bits, &mut rng) % &pk.n;

@@ -27,11 +27,12 @@ use crate::protocols::gg18::{
 use std::sync::Arc;
 
 pub struct KeyGenerator {
-  num_generators: usize,
   generator_id: u32,
+  num_generators: usize,
   network: Arc<Network>,
   pedersen: Arc<PedersenCommitment>,
-  x_i: Option<Scalar>, // shard private key
+  num_n_bits: u32,
+  pub x_i: Option<Scalar>, // shard private key
   X_i: Option<Point>, // shard public key
 }
 
@@ -49,12 +50,14 @@ impl KeyGenerator {
     generator_id: u32,
     network: Arc<Network>,
     pedersen: Arc<PedersenCommitment>,
+    num_n_bits: u32,
   ) -> Self {
     Self {
       num_generators,
       generator_id,
       network,
       pedersen,
+      num_n_bits, 
       x_i: None,
       X_i: None,
     }
@@ -65,11 +68,13 @@ impl KeyGenerator {
 
     //// Phase 1
     let u_i = Scalar::rand();
+    println!("{} ---> Created u_i", self.generator_id);
 
     let comm_pair = {
       let blinding_factor = &Scalar::rand();
       pedersen.commit(&u_i, blinding_factor)
     };
+    println!("{} ---> Created comm_pair", self.generator_id);
 
     // broadcast KGC_i commitment
     let KGC_i = (self.generator_id, comm_pair.comm);
@@ -77,6 +82,7 @@ impl KeyGenerator {
       &KGC_BROADCAST,
       &bincode::serialize(&KGC_i).unwrap(),
     ).await;
+    println!("{} ---> Broadcasted KGC_i", self.generator_id);
 
     let mut KGC_is: Vec<(u32, Point)> = {
       let xs = self.network.receive_broadcasts(KGC_BROADCAST).await;
@@ -84,16 +90,24 @@ impl KeyGenerator {
         bincode::deserialize(&x).expect("Failed to deserialize KGC_i")
       }).collect()
     };
+    println!("{} ---> Received Broadcasted KGC_i", self.generator_id);
 
     // broadcast paillier pk: E_i
+    println!("{} ---> Generating primes p and q", self.generator_id);
+    let (p, q) = Paillier::gen_p_q(self.num_n_bits);
+    println!("{} ---> Generated", self.generator_id);
     let paillier = Paillier::new(
-      32, // TODO change to 256
+      256,
+      &p,
+      &q,
       GCalcMethod::Random,
     );
+    println!("{} ---> Created Paillier instance", self.generator_id);
     self.network.broadcast(
       &PUBKEY_BROADCAST,
       &bincode::serialize(&paillier.pk).unwrap(),
     ).await;
+    println!("{} ---> Broadcasted Paillier pk", self.generator_id);
 
     // get all broadcast E_is
     let E_is: Vec<PublicKey> = {
@@ -261,6 +275,7 @@ mod tests {
     let network = Arc::new(Network::new(3));
     let num_generators = 3;
     let pedersen = Arc::new(PedersenCommitment::new());
+    let num_n_bits = 6u32;
 
     let mut generators = vec![];
     for generator_id in 0..3 {
@@ -269,6 +284,7 @@ mod tests {
         generator_id,
         Arc::clone(&network),
         Arc::clone(&pedersen),
+        num_n_bits,
       );
       generators.push(generator);
     }

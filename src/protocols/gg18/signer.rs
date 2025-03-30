@@ -231,11 +231,13 @@ impl Signer {
       &SignerId::A,
       k_i,
     ).await.into(); 
+    println!("----> {:?}: Phase 2: k_i_gamma_i: {:?}", self.signer_id, k_i_gamma_i);
 
     let k_i_omega_i: Scalar = self.perfrom_mta_as_alice(
       &SignerId::A,
       k_i,
     ).await.into(); 
+    println!("----> {:?}: Phase 2: k_i_omega_i: {:?}", self.signer_id, k_i_omega_i);
 
     self.perfrom_MtA_as_Bob(&SignerId::A, gamma_i).await;
     self.perfrom_MtA_as_Bob(&SignerId::A, omega_i).await;
@@ -390,6 +392,7 @@ impl Signer {
   ) -> Result<Signature, String> {
     // Phase 1
     let (k_i, gamma_i, C_is, comm_pair, pedersen) = self.run_phase_1().await;
+    println!("--> {:?}: Phase 1 completed", self.signer_id);
 
     // Phase 2
     let (delta_i, sigma_i) = {
@@ -407,6 +410,7 @@ impl Signer {
         ).await
       }
     };
+    println!("--> {:?}: Phase 2 completed", self.signer_id);
 
     // Phase 3
     let delta_inv = {
@@ -414,6 +418,7 @@ impl Signer {
       let aggr_delta = delta_is.iter().fold(Scalar::zero(), |acc, c_i| acc + c_i);
       aggr_delta.inv()
     };
+    println!("--> {:?}: Phase 3 completed", self.signer_id);
 
     // Phase 4
     let r = self.run_phase_4(
@@ -422,6 +427,7 @@ impl Signer {
       &C_is,
       &delta_inv,
     ).await?;
+    println!("--> {:?}: Phase 4 completed", self.signer_id);
 
     // Phase 5
     let s = self.run_phase_5(
@@ -430,6 +436,7 @@ impl Signer {
       m,
       &r,
     ).await?;
+    println!("--> {:?}: Phase 5 completed", self.signer_id);
 
     let sig = Signature {
       r: r.clone(),
@@ -437,71 +444,127 @@ impl Signer {
     };
     Ok(sig)
   }
+
+   // i and j are evaluation points assigned to players
+   // e.g. player i uses evaluation point i+1
+   fn calc_lambda_i_j(i: usize, j: usize) -> Scalar {
+     assert!(i < j);
+     let x = j / (j - i);
+     Scalar::from(x)
+   }
+ 
+   // i and j are evaluation points assigned to players
+   // e.g. player i uses evaluation point i+1
+   fn calc_lambda_j_i(i: i32, j: i32) -> Scalar {
+     assert!(i < j);
+     let x = (i - j) * -1;  // i - j is always negative
+     Scalar::from(x as usize).inv()
+   }
+ 
 }
-
-  // let lambda_i_j = calc_lambda_i_j(1, 2); // 2
-  // let lambda_j_i = calc_lambda_j_i(1, 2); // -1
-  // 
-  // let omega_1 = lambda_i_j * x1;
-  // let omega_2 = lambda_j_i * x2;
-
-  // i and j are evaluation points assigned to players
-  // e.g. player i uses evaluation point i+1
-  // fn calc_lambda_i_j(i: usize, j: usize) -> Scalar {
-  //   assert!(i < j);
-  //   let x = j / (j - i);
-  //   Scalar::from(x)
-  // }
-  // 
-  // // i and j are evaluation points assigned to players
-  // // e.g. player i uses evaluation point i+1
-  // fn calc_lambda_j_i(i: i32, j: i32) -> Scalar {
-  //   assert!(i < j);
-  //   let x = (i - j) * -1;  // i - j is always negative
-  //   Scalar::from(x as usize).inv()
-  // }
-  // 
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use tokio::spawn;
   use std::sync::Arc;
+  use crate::protocols::gg18::{
+    key_generator::KeyGenerator,
+    paillier::Paillier,
+  };
+
+  async fn generate_keys(
+    num_generators: usize,
+    num_n_bits: u32,
+  ) -> Vec<KeyGenerator> {
+    let network = Arc::new(Network::new(num_generators));
+    let pedersen = Arc::new(PedersenCommitment::new());
+
+    let mut handles = vec![];
+
+    for generator_id in 0..num_generators as u32 {
+      // Create the generator.
+      let generator = KeyGenerator::new(
+        num_generators,
+        generator_id,
+        Arc::clone(&network),
+        Arc::clone(&pedersen),
+        num_n_bits,
+      );
+
+      let handle = tokio::spawn(async move {
+        let mut gen = generator;
+        gen.generate_key().await;
+        gen
+      });
+      handles.push(handle);
+    }
+
+    // Await all tasks and collect the generators.
+    let mut generators = vec![];
+    for handle in handles {
+        generators.push(handle.await.unwrap());
+    }
+    
+    generators
+  }
 
   #[tokio::test]
   async fn test_signing() {
-    let network = Arc::new(Network::new(3));
-    let num_bits = 256;
-    let paillier_n = Integer::from(421); // TODO fix this
+    let num_generators = 3;
+    let num_n_bits = 256;
 
+    // generate key shards 
+    println!("--> Generating key shards");
+    let generators = generate_keys(
+      num_generators,
+      num_n_bits,
+    ).await;
+    println!("--> Generated");
+
+    // secp256k1 message is at most 256 bits
+
+    // sign using 2 key shards from generator 1 ans 2
+    let num_signers = 2;
+    let network = Arc::new(Network::new(num_signers));
+
+    let (p, q) = Paillier::gen_p_q(num_n_bits);
+    let n = p * q;
     let mut signer_a = Signer::new(
       SignerId::A,
-      num_bits,
-      &paillier_n,
+      num_n_bits,
+      &n,
       Arc::clone(&network),
     );
     let mut signer_b = Signer::new(
       SignerId::B,
-      num_bits,
-      &paillier_n,
+      num_n_bits,
+      &n,
       Arc::clone(&network),
     );
     
-    let m = Scalar::from(123u8);
-    let omega_a = Scalar::from(1u8); // TODO use the value from the key
-    let omega_b = Scalar::from(2u8);
+    let lambda_1_2 = Signer::calc_lambda_i_j(1, 2);
+    let lambda_2_1 = Signer::calc_lambda_j_i(1, 2);
+    assert_eq!(lambda_1_2, Scalar::from(2u8));
+    assert_eq!(lambda_2_1, Scalar::from(1u8).inv());
+
+    let omega_1 = lambda_1_2 * generators[0].x_i.unwrap();
+    let omega_2 = lambda_2_1 * generators[1].x_i.unwrap();
+
+    // message to sign
+    let m = Scalar::from(1234556u32);
 
     let handles = vec![
       spawn(async move {
         signer_a.create_signature(
           &m,
-          &omega_a,
+          &omega_1,
         ).await.unwrap();
       }),
       spawn(async move {
         signer_b.create_signature(
           &m,
-          &omega_b,
+          &omega_2,
         ).await.unwrap();
       }),
     ];
@@ -509,5 +572,7 @@ mod tests {
     for handle in handles {
       handle.await.unwrap();
     }
+    println!("--> Signatures created");
   }
 }
+
