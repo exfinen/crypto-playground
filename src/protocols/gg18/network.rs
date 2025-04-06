@@ -15,20 +15,30 @@ pub struct UnicastDest {
   id: UnicastId,
   from: u32,
   to: u32,
+  value_id: ValueId,
 }
 
 impl UnicastDest {
-  pub fn new(id: UnicastId, from: u32, to: u32) -> Self {
+  pub fn new(
+    id: UnicastId,
+    from: u32,
+    to: u32,
+    value_id: ValueId,
+  ) -> Self {
     Self {
       id,
       from,
       to,
+      value_id,
     }
   }
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct BroadcastId(pub u8);
+
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
+pub struct ValueId(pub u8);
 
 type ValueType = Vec<u8>;
 type BroadcastValues = Vec<ValueType>;
@@ -101,9 +111,11 @@ impl Network {
   pub async fn receive_unicast(&self, dest: &UnicastDest) -> ValueType {
     // wait until unicast is received
     loop {
-      let unicasts = self.unicasts.lock().await;
+      let mut unicasts = self.unicasts.lock().await;
       if unicasts.contains_key(&dest) { 
-        return unicasts.get(&dest).unwrap().clone();
+        let value = unicasts.get(&dest).unwrap().clone();
+        unicasts.remove(&dest).unwrap();
+        return value;
       }
       drop(unicasts);
       self.data_added.notified().await;

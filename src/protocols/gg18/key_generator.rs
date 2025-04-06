@@ -12,6 +12,7 @@ use crate::protocols::gg18::{
     Network,
     UnicastId,
     UnicastDest,
+    ValueId,
   },
   paillier::{
     GCalcMethod,
@@ -43,6 +44,7 @@ const DECOMM_BROADCAST: BroadcastId = BroadcastId(4);
 const A_I_BROADCAST: BroadcastId = BroadcastId(5);
 
 const P_I_UNICAST: UnicastId = UnicastId(1);
+const P_I: ValueId = ValueId(1);
 
 impl KeyGenerator {
   pub fn new(
@@ -212,6 +214,7 @@ impl KeyGenerator {
         P_I_UNICAST,
         self.generator_id,
         id,
+        P_I,
       );
       let ser_res = bincode::serialize(&res).unwrap(); 
       self.network.unicast(&dest, &ser_res).await;
@@ -230,6 +233,7 @@ impl KeyGenerator {
             P_I_UNICAST,
             id,
             self.generator_id,
+            P_I,
           );
           let ser_p_i: Vec<u8> = self.network.receive_unicast(&dest).await;
           let p_i = bincode::deserialize(&ser_p_i).unwrap();

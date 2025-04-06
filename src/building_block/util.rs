@@ -3,7 +3,9 @@ use rand::{
   RngCore,
 };
 use rug::{
-  integer::IsPrime, rand::{MutRandState, RandState}, Complete, Integer
+  rand::{MutRandState, RandState},
+  Complete,
+  Integer,
 };
 
 pub fn gen_random_binary_val() -> bool {

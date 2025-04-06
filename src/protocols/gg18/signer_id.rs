@@ -7,8 +7,17 @@ pub enum SignerId {
 impl From<&SignerId> for u32 {
   fn from(signer_id: &SignerId) -> Self {
     match signer_id {
-      SignerId::A => 1,
-      SignerId::B => 2,
+      SignerId::A => 0,
+      SignerId::B => 1,
+    }
+  }
+}
+
+impl From<&SignerId> for usize {
+  fn from(signer_id: &SignerId) -> Self {
+    match signer_id {
+      SignerId::A => 0,
+      SignerId::B => 1,
     }
   }
 }

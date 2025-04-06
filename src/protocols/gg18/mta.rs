@@ -40,10 +40,10 @@ impl Alice {
     let (pk, sk) = (inst.pk, inst.sk);
     let mut rng = get_32_byte_rng();
 
-    println!("Calling Alice::encrypt");
     let c_a = Paillier::encrypt(
       num_bits, &mut rng, a, &pk
     );
+
     // TODO implement range proof of a < q^3
     let rp_a_lt_q3 = Integer::ZERO;
 
@@ -87,14 +87,13 @@ impl Bob {
     // TODO check if range proof of c_a is valid
     
     let mut rng = get_32_byte_rng();
-    let q5 = q.pow(5).complete();
-    // choose beta' uniformly at random in Z_q^5
+
+    // choose beta' uniformly at random in Z_q
     let beta_prime = gen_random_number(
-      q5.significant_bits(),
+      q.significant_bits(),
       &mut rng,
     );
 
-    println!("Calling BNob::encrypt");
     let c_beta_prime = Paillier::encrypt(
       pk.n.significant_bits(),
       &mut rng,

@@ -153,8 +153,6 @@ impl Paillier {
     m: &Integer, // plaintext
     pk: &PublicKey,
   ) -> Integer {
-    println!("m: {}", m);
-    println!("pk.n: {}", pk.n);
     if m < &Integer::ZERO || m >= &pk.n {
       panic!("m is outside the range (0 <= m < n)");
     }
