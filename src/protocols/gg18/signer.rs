@@ -419,13 +419,13 @@ impl Signer {
     let s_i = m * k_i.0 + r * sigma_i.0;
 
     // generate a commitment of s_i and broadcast
-    let pedersen = PedersenCommitment::new();
     let blinding_factor = &Scalar::rand();
-    let comm_pair = pedersen.commit(&s_i, &blinding_factor);
+    let comm_pair: CommitmentPair = self.pedersen.commit(&s_i, &blinding_factor);
+    let ser_comm_pair: Vec<u8> = bincode::serialize(&comm_pair).unwrap();
 
     self.network.broadcast(
       &S_I_COMM_BROADCAST,
-      &comm_pair.comm.serialize(),
+      &ser_comm_pair,
     ).await;
 
     // Correct all broadcast s_i commitments
@@ -436,7 +436,7 @@ impl Signer {
 
     // Verify the commitments
     for comm_pair in comm_pairs.iter() {
-      if !pedersen.verify(&comm_pair.comm, &comm_pair.decomm) {
+      if !self.pedersen.verify(&comm_pair.comm, &comm_pair.decomm) {
         return Err("s_i decommitment failed".to_string());
       }
     }
