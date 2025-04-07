@@ -398,7 +398,7 @@ impl Signer {
 
     let jacob_R = aggr_gamma * delta_inv;
 
-    // R is a Jacobian point, so convert it to Affine point
+    // since R is a Jacobian point, convert it to Affine point
     let affine_R: AffinePoint = jacob_R.into();
     let r_x: Scalar = affine_R.x().into();
 
@@ -413,9 +413,11 @@ impl Signer {
     &mut self,
     k_i: &K_i,
     sigma_i: &Sigma_i,
-    m: &Scalar,
+    M: &Scalar,
     r: &Scalar,
+    hasher: impl Fn(&Scalar) -> Scalar,
   ) -> Result<Scalar,String> {
+    let m = hasher(M);
     let s_i = m * k_i.0 + r * sigma_i.0;
 
     // generate a commitment of s_i and broadcast
@@ -451,6 +453,7 @@ impl Signer {
     &mut self,
     m: &Scalar, // message to sign; m < Z_n
     omega_i: &Scalar, // additive component of the private key
+    hasher: impl Fn(&Scalar) -> Scalar,
   ) -> Result<Signature, String> {
     // Phase 1
     println!("***----> {:?}: Phase 1 started", self.signer_id);
@@ -508,13 +511,11 @@ impl Signer {
       &sigma_i,
       m,
       &r,
+      hasher,
     ).await?;
     println!("***----> {:?}: Phase 5 completed", self.signer_id);
 
-    let sig = Signature {
-      r: r.clone(),
-      s: s.clone(),
-    };
+    let sig = Signature::new(&r, &s);
     Ok(sig)
   }
 
@@ -533,7 +534,6 @@ impl Signer {
      let x = (i - j) * -1;  // i - j is always negative
      Scalar::from(x as usize).inv()
    }
- 
 }
 
 #[cfg(test)]
@@ -541,9 +541,12 @@ mod tests {
   use super::*;
   use tokio::spawn;
   use std::sync::Arc;
-  use crate::protocols::gg18::{
-    key_generator::KeyGenerator,
-    paillier::Paillier,
+  use crate::{
+    building_block::util::bitcoin_hasher,
+    protocols::gg18::{
+      key_generator::KeyGenerator,
+      paillier::Paillier,
+   },
   };
 
   async fn generate_keys(
@@ -619,36 +622,52 @@ mod tests {
       pedersen,
     );
     
+    // get pk and omegas from shards using lagrange interpolation
     let lambda_1_2 = Signer::calc_lambda_i_j(1, 2);
     let lambda_2_1 = Signer::calc_lambda_j_i(1, 2);
     assert_eq!(lambda_1_2, Scalar::from(2u8));
     assert_eq!(lambda_2_1, Scalar::from(1u8).inv());
 
+    let pk = 
+      generators[0].X_i.unwrap() * lambda_1_2 +
+      generators[1].X_i.unwrap() * lambda_2_1;
+
     let omega_1 = lambda_1_2 * generators[0].x_i.unwrap();
     let omega_2 = lambda_2_1 * generators[1].x_i.unwrap();
 
-    // message to sign; m in Z_n 
-    let m = Scalar::from(12345u32);
+    // message to sign; M in Z_n 
+    let M = Scalar::rand();
 
     let handles = vec![
       spawn(async move {
         signer_a.create_signature(
-          &m,
+          &M,
           &omega_1,
-        ).await.unwrap();
+          bitcoin_hasher,
+        ).await.unwrap()
       }),
       spawn(async move {
         signer_b.create_signature(
-          &m,
+          &M,
           &omega_2,
-        ).await.unwrap();
+          bitcoin_hasher,
+        ).await.unwrap()
       }),
     ];
 
-    for handle in handles {
-      handle.await.unwrap();
-    }
-    println!("--> Signatures created");
+    let sigs: Vec<_> = futures::future::join_all(handles).await
+      .into_iter()
+      .map(|res| res.unwrap())
+      .collect();
+
+    println!("--> Signatures A: {:?}", sigs[0]);
+    println!("--> Signatures B: {:?}", sigs[1]);
+
+    let is_sig_valid = sigs[0].verify(
+      &pk,
+      &M,
+      bitcoin_hasher,
+    );
+    assert!(is_sig_valid);
   }
 }
-

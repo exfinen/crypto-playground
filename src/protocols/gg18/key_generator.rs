@@ -34,7 +34,7 @@ pub struct KeyGenerator {
   pedersen: Arc<PedersenCommitment>,
   num_n_bits: u32,
   pub x_i: Option<Scalar>, // shard private key
-  X_i: Option<Point>, // shard public key
+  pub X_i: Option<Point>, // shard public key
 }
 
 const KGC_BROADCAST: BroadcastId = BroadcastId(1);

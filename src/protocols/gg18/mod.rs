@@ -8,4 +8,5 @@ pub mod pedersen_secp256k1;
 pub mod signer_id;
 pub mod signature;
 pub mod signer;
+pub mod simple_signer;
 

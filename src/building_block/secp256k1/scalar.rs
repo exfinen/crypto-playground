@@ -50,7 +50,7 @@ pub struct Scalar { // using 4x64 assuming 64-bit arch
 }
 
 impl Scalar {
-  fn new() -> Self {
+  pub fn new() -> Self {
     Scalar {
       d: [0; 4],
     }
@@ -90,8 +90,11 @@ impl Scalar {
   }
 
   pub fn to_hex(&self) -> String {
-    // TODO implement this
-    "ab".to_string()
+    let mut buf = [0u8; 32];
+    for (i, limb) in self.d.iter().enumerate() {
+      buf[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+    }
+    format!("0x{}", hex::encode(buf))
   }
 
   pub fn secp256k1_serialize(&self) -> Vec<u8> {
