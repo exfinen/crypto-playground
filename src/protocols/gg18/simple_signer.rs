@@ -15,14 +15,15 @@ struct SimpleSigner();
 
 impl SimpleSigner {
   pub fn sign(
+    k: &Scalar,
     hasher: impl Fn(&Scalar) -> Scalar,
     M: &Scalar,
     sk: &Scalar,
   ) -> Signature {
     let m = hasher(M);
 
-    let k = Scalar::rand();
     let k_inv = k.inv();
+    println!("k_inv: {:?}", k_inv);
     let R = JacobianPoint::get_base_point() * &k_inv;
     let r_pt: AffinePoint = R.into();
     let r: Scalar = r_pt.x().into();
@@ -42,8 +43,10 @@ mod tests {
     let m = Scalar::rand();
     let sk = Scalar::rand();
     let pk = JacobianPoint::get_base_point() * &sk;
+    let k = Scalar::from(12345u32);
 
     let sig = SimpleSigner::sign(
+      &k,
       bitcoin_hasher,
       &m,
       &sk,
