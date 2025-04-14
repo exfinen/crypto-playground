@@ -37,9 +37,6 @@ impl Signature {
     let R_pt: AffinePoint = R_pt.into();
     let r_prime: Scalar = R_pt.x().into();
 
-    println!("r : {:?}", self.r);
-    println!("r': {:?}", r_prime);
-
     self.r == r_prime
   }
 

@@ -15,19 +15,32 @@ struct SimpleSigner();
 
 impl SimpleSigner {
   pub fn sign(
-    k: &Scalar,
+    k: &Scalar, // k in GG18
     hasher: impl Fn(&Scalar) -> Scalar,
     M: &Scalar,
-    sk: &Scalar,
+    x: &Scalar, // x in GG18
   ) -> Signature {
     let m = hasher(M);
 
-    let k_inv = k.inv();
-    println!("k_inv: {:?}", k_inv);
-    let R = JacobianPoint::get_base_point() * &k_inv;
-    let r_pt: AffinePoint = R.into();
-    let r: Scalar = r_pt.x().into();
-    let s = m * k + r * k * sk;
+    let gamma = Scalar::from(15u32);
+    let delta = k * &gamma;
+    //println!("====> delta: {:?}", &delta);
+    let Gamma = JacobianPoint::get_base_point() * &gamma;
+    //println!("====> Gamma: {:?}", &Gamma);
+
+    let R = (&Gamma * delta.inv()).to_affine();
+    let r: Scalar = R.x().into();
+    println!("====> r: {:?}", &r);
+    //println!("====> R: {:?}", &R);
+    //println!("====> m: {:?}", &m);
+    //println!("====> k: {:?}", &k);
+    //println!("====> r: {:?}", &r);
+
+    let kx = k * x; // = sigma
+    //println!("====> kx: {:?}", &kx);
+
+    let s = m * k + r * kx;
+    println!("====> s: {:?}", &s);
 
     Signature::new(&r, &s)
   }
@@ -40,21 +53,24 @@ mod tests {
 
   #[test]
   pub fn test_sign_verify() {
-    let m = Scalar::rand();
-    let sk = Scalar::rand();
-    let pk = JacobianPoint::get_base_point() * &sk;
-    let k = Scalar::from(12345u32);
+    let M = Scalar::from(123u32);
+    let x = Scalar::from(10u32);
+    let pk = JacobianPoint::get_base_point() * &x;
+
+    // k = delta in GG18
+    let k = Scalar::from(3u32); // k = k_1 + k_2
 
     let sig = SimpleSigner::sign(
       &k,
       bitcoin_hasher,
-      &m,
-      &sk,
+      &M,
+      &x,
     );
+    println!("sig: {:?}", sig);
 
     assert!(sig.verify(
       &pk,
-      &m,
+      &M,
       bitcoin_hasher,
     ));
   }

@@ -69,14 +69,12 @@ impl KeyGenerator {
     let pedersen = &self.pedersen;
 
     //// Phase 1
-    let u_i = Scalar::rand();
-    println!("{} ---> Created u_i", self.generator_id);
+    let u_i = Scalar::from(self.generator_id + 1);
 
     let comm_pair = {
       let blinding_factor = &Scalar::rand();
       pedersen.commit(&u_i, blinding_factor)
     };
-    println!("{} ---> Created comm_pair", self.generator_id);
 
     // broadcast KGC_i commitment
     let KGC_i = (self.generator_id, comm_pair.comm);
@@ -84,7 +82,6 @@ impl KeyGenerator {
       &KGC_BROADCAST,
       &bincode::serialize(&KGC_i).unwrap(),
     ).await;
-    println!("{} ---> Broadcasted KGC_i", self.generator_id);
 
     let mut KGC_is: Vec<(u32, Point)> = {
       let xs = self.network.receive_broadcasts(KGC_BROADCAST).await;
@@ -92,24 +89,19 @@ impl KeyGenerator {
         bincode::deserialize(&x).expect("Failed to deserialize KGC_i")
       }).collect()
     };
-    println!("{} ---> Received Broadcasted KGC_i", self.generator_id);
 
     // broadcast paillier pk: E_i
-    println!("{} ---> Generating primes p and q", self.generator_id);
     let (p, q) = Paillier::gen_p_q(self.num_n_bits);
-    println!("{} ---> Generated", self.generator_id);
     let paillier = Paillier::new(
       256,
       &p,
       &q,
       GCalcMethod::Random,
     );
-    println!("{} ---> Created Paillier instance", self.generator_id);
     self.network.broadcast(
       &PUBKEY_BROADCAST,
       &bincode::serialize(&paillier.pk).unwrap(),
     ).await;
-    println!("{} ---> Broadcasted Paillier pk", self.generator_id);
 
     // get all broadcast E_is
     let E_is: Vec<PublicKey> = {
@@ -168,7 +160,7 @@ impl KeyGenerator {
         if &comm_rec != comm {
           panic!("Phase 2: Invalid commitment");
         }
-        let U_i = Point::get_base_point() * decomm.secret;
+        let U_i = g * decomm.secret;
         pk = pk + U_i;
         U_is.push(U_i.clone());
       }
