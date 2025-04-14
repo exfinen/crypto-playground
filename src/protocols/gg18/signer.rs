@@ -310,8 +310,8 @@ impl Signer {
 
     let delta_A = k_A * gamma_A + &k_A_gamma_B;
     let sigma_A = k_A * omega_A + &k_A_omega_B;
-    println!("----> delta_{:?}: {:?}", self.signer_id, &delta_A);
-    println!("----> sigma_{:?}: {:?}", self.signer_id, &sigma_A);
+    //println!("----> delta_{:?}: {:?}", self.signer_id, &delta_A);
+    //println!("----> sigma_{:?}: {:?}", self.signer_id, &sigma_A);
 
     self.delta_i = Some(delta_A);
     self.sigma_i = Some(sigma_A);
@@ -346,8 +346,8 @@ impl Signer {
      
     let delta_B = k_B * gamma_B + &k_B_gamma_A;
     let sigma_B = k_B * omega_B + &k_B_omega_A;
-    println!("----> delta_{:?}: {:?}", self.signer_id, &delta_B);
-    println!("----> sigma_{:?}: {:?}", self.signer_id, &sigma_B);
+    //println!("----> delta_{:?}: {:?}", self.signer_id, &delta_B);
+    //println!("----> sigma_{:?}: {:?}", self.signer_id, &sigma_B);
 
     self.delta_i = Some(delta_B);
     self.sigma_i = Some(sigma_B);
@@ -368,10 +368,10 @@ impl Signer {
       xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
     };
     let delta = delta_is.iter().fold(Scalar::zero(), |acc, x| acc + x);
-    println!("----> {:?} delta: {:?}", self.signer_id, &delta);
+    //println!("----> {:?} delta: {:?}", self.signer_id, &delta);
 
     self.delta = Some(delta);
-    println!("----> {:?} delta_inv: {:?}", self.signer_id, &self.delta.unwrap().inv());
+    //println!("----> {:?} delta_inv: {:?}", self.signer_id, &self.delta.unwrap().inv());
   }
 
   pub async fn run_phase_4(&mut self) -> Result<(), String> {
@@ -417,14 +417,14 @@ impl Signer {
       Scalar::zero(),
       |acc, decomm| acc + decomm.secret
     );
-    println!("----> gamma_{:?}: {:?}", self.signer_id, &gamma);
+    //println!("----> gamma_{:?}: {:?}", self.signer_id, &gamma);
 
     // compute Gamma
     let Gamma: JacobianPoint = dec_Gamma_is.iter().fold(
       JacobianPoint::point_at_infinity(),
       |acc, decomm| acc + self.pedersen.g * decomm.secret
     );
-    println!("----> Gamma_{:?}: {:?}", self.signer_id, &Gamma);
+    //println!("----> Gamma_{:?}: {:?}", self.signer_id, &Gamma);
 
     let delta_inv = self.delta.unwrap().inv();
     let R = Gamma * &delta_inv;
@@ -452,12 +452,11 @@ impl Signer {
     let sigma_i = self.sigma_i.as_ref().unwrap();
     let r = self.r.as_ref().unwrap();
 
-    let m = Scalar::from(11u32); //hasher(M);
-                                 //
-    println!("----> m: {:?}", &m);
-    println!("----> k_i: {:?}", &k_i);
-    println!("----> r: {:?}", &r);
-    println!("----> sigma_i: {:?}", &sigma_i);
+    let m = hasher(M);
+    //println!("----> m: {:?}", &m);
+    //println!("----> k_i: {:?}", &k_i);
+    //println!("----> r: {:?}", &r);
+    //println!("----> sigma_i: {:?}", &sigma_i);
     let s_i = m * k_i + r * sigma_i;
 
     // DEBUG broadcast sigma_i
@@ -477,7 +476,7 @@ impl Signer {
       Scalar::zero(),
       |acc, decomm| acc + decomm.secret
     );
-    println!("----> kx/sigma_{:?}: {:?}", &self.signer_id, &sigma);
+    //println!("----> kx/sigma_{:?}: {:?}", &self.signer_id, &sigma);
 
     // DEBUG broadcast k_i
     let blinding_factor = &Scalar::rand();
@@ -495,8 +494,8 @@ impl Signer {
       Scalar::zero(),
       |acc, decomm| acc + decomm.secret
     );
-    println!("----> k_{:?}: {:?}", &self.signer_id, &k);
-    println!("----> k_{:?}^-1 * G: {:?}", &self.signer_id, (self.pedersen.g * &k.inv()).to_affine());
+    //println!("----> k_{:?}: {:?}", &self.signer_id, &k);
+    //println!("----> k_{:?}^-1 * G: {:?}", &self.signer_id, (self.pedersen.g * &k.inv()).to_affine());
 
     // broadcast Com(S_i)
     let blinding_factor = &Scalar::rand();
@@ -690,19 +689,17 @@ mod tests {
     assert_eq!(lambda_1_2, Scalar::from(2u8));
     assert_eq!(lambda_2_1, Scalar::from(1u8).inv());
 
-    let pk = 
-      generators[0].X_i.unwrap() * lambda_1_2 +
-      generators[1].X_i.unwrap() * lambda_2_1;
-
     //let omega_1 = lambda_1_2 * generators[0].x_i.unwrap();
     //let omega_2 = lambda_2_1 * generators[1].x_i.unwrap();
     let omega_A = Scalar::from(3u32);
     let omega_B = Scalar::from(7u32);
     println!("--> omega_A: {:?}", omega_A);
     println!("--> omega_B: {:?}", omega_B);
-    // x = omega = 10
-    // k = 3
-    // kx = 30
+
+    //let pk = 
+    //  generators[0].X_i.unwrap() * lambda_1_2 +
+    //  generators[1].X_i.unwrap() * lambda_2_1;
+    let pk = JacobianPoint::get_base_point() * (&omega_A + &omega_B);
 
     // message to sign; M in Z_n 
     let M = Scalar::from(123u32);

@@ -20,26 +20,24 @@ impl SimpleSigner {
     M: &Scalar,
     x: &Scalar, // x in GG18
   ) -> Signature {
-    //let m = hasher(M);
-    let m = Scalar::from(11u32); 
+    let m = hasher(M);
 
     let gamma = Scalar::from(15u32);
     let delta = k * &gamma;
-    println!("====> delta: {:?}", &delta);
+    //println!("====> delta: {:?}", &delta);
     let Gamma = JacobianPoint::get_base_point() * &gamma;
-    println!("====> Gamma: {:?}", &Gamma);
+    //println!("====> Gamma: {:?}", &Gamma);
 
     let R = (&Gamma * delta.inv()).to_affine();
-    println!("====> R: {:?}", &R);
     let r: Scalar = R.x().into();
     println!("====> r: {:?}", &r);
-
-    println!("====> m: {:?}", &m);
-    println!("====> k: {:?}", &k);
-    println!("====> r: {:?}", &r);
+    //println!("====> R: {:?}", &R);
+    //println!("====> m: {:?}", &m);
+    //println!("====> k: {:?}", &k);
+    //println!("====> r: {:?}", &r);
 
     let kx = k * x; // = sigma
-    println!("====> kx: {:?}", &kx);
+    //println!("====> kx: {:?}", &kx);
 
     let s = m * k + r * kx;
     println!("====> s: {:?}", &s);
@@ -68,7 +66,7 @@ mod tests {
       &M,
       &x,
     );
-    println!("CORRECT sig: {:?}", sig);
+    println!("sig: {:?}", sig);
 
     assert!(sig.verify(
       &pk,
