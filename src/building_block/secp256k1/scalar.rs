@@ -46,7 +46,7 @@ use serde::{
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Scalar { // using 4x64 assuming 64-bit arch
-  d: [u64; 4],
+  pub d: [u64; 4],
 }
 
 impl Scalar {

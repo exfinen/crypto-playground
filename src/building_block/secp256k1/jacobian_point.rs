@@ -7,6 +7,7 @@ use std::{
   ops::{Add, AddAssign, Mul},
 };
 use crate::building_block::secp256k1::{
+  affine_point::AffinePoint,
   ffi::{
     group_add,
     group_mul,
@@ -27,7 +28,7 @@ pub struct JacobianPoint { // using 5x52 assuming 64-bit arch
   pub x: Fe5x52,
   pub y: Fe5x52,
   pub z: Fe5x52,
-  infinity: c_int,
+  pub infinity: c_int,
 }
 
 impl JacobianPoint {
@@ -58,6 +59,10 @@ impl JacobianPoint {
 
   pub fn get_point_at_infinity() -> Self {
     Self::new()
+  }
+
+  pub fn to_affine(self) -> AffinePoint {
+    self.into()
   }
 
   pub fn serialize(&self) -> Vec<u8> {

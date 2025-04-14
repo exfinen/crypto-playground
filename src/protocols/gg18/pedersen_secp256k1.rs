@@ -78,9 +78,7 @@ impl PedersenCommitment {
   ) -> CommitmentPair {
     let U_i = &self.g * secret;
     let comm = &U_i + &self.h * blinding_factor;
-    let decomm = Decommitment::new(secret, blinding_factor);
-    let comm2 = &self.g * decomm.secret + &self.h * decomm.blinding_factor;
-    assert_eq!(comm, comm2);
+    let decomm = Decommitment::new(&secret, blinding_factor);
     CommitmentPair::new(comm, decomm)
   }
 
@@ -89,9 +87,8 @@ impl PedersenCommitment {
     comm: &Point,
     decomm: &Decommitment,
   ) -> bool {
-    let U_i = self.g * decomm.secret;
-    let comm_prime = &U_i + &self.h * decomm.blinding_factor;
-
+    let comm_prime =
+      &self.g * &decomm.secret + &self.h * decomm.blinding_factor;
     comm == &comm_prime
   }
 }
