@@ -137,11 +137,11 @@ impl KeyGenerator {
       self.network.unicast(&dest, &p_i_eval).await;
     }
 
+    let eval_point = self.generator_id + 1;
+
     // construct p_i(this_gen_id)s from local p_i 
     // and p_is received from other generators
     let eval_p_is = {
-      let eval_point = self.generator_id + 1;
-
       let mut eval_p_is = vec![];
       for from in generators {
         if from == self.generator_id { // if self to self, eval locally
@@ -188,12 +188,9 @@ impl KeyGenerator {
 
     // verify polynomials received from other generators are not compromised
     // i.e. p_i(gen_id) * G ==  U_i + A_i
-    for (p_i, (A_i, U_i)) in eval_p_is.iter().zip(A_is.iter().zip(U_is)) {
+    for (p_i, (A_i, U_i)) in eval_p_is.iter().zip(A_is.iter().zip(&U_is)) {
       let lhs = g * p_i;
-      let rhs = {
-        let eval_pt = Scalar::from(self.generator_id + 1);
-        U_i + A_i * eval_pt
-      };
+      let rhs = U_i + A_i * Scalar::from(eval_point);
       if lhs != rhs {
         return Err(format!("---> {}: Phase 2: compromised polynomial found", self.generator_id));
       }
@@ -207,11 +204,15 @@ impl KeyGenerator {
     self.x_i = Some(x_i);
 
     // calculate shard public key
+    let PK = U_is.iter().fold(
+      JacobianPoint::point_at_infinity(),
+      |acc, x| acc + x, 
+    );
     let X_i = A_is.iter().fold(
       JacobianPoint::point_at_infinity(),
       |acc, x| acc + x, 
     );
-    self.X_i = Some(X_i);
+    self.X_i = Some(PK + X_i * Scalar::from(eval_point));
 
     Ok(())
   }
@@ -231,9 +232,7 @@ impl KeyGenerator {
 
   pub async fn generate_key(&mut self) -> Result<(Scalar, JacobianPoint), String> {
     self.run_phase_1().await;
-
     self.run_phase_2().await?;
-
     self.run_phase_3().await;
 
     Ok((self.x_i.unwrap(), self.X_i.unwrap()))
@@ -281,20 +280,16 @@ mod tests {
     let x_is = res.iter().map(|(x_i, _)| x_i).collect::<Vec<_>>();
     let X_is = res.iter().map(|(_, X_i)| X_i).collect::<Vec<_>>();
 
-    println!("x_i: {:?}", x_is);
-    println!("X_i: {:?}", X_is);
-
     let G = JacobianPoint::get_base_point();
 
-    // lagrange intepolation with generator 0 and generator 1 key pairs
+    // lagrange intepolation with generator 0 and 1 key pairs
     let lambda_1_2 = Scalar::from(2u32);
     let lambda_2_1 = Scalar::from(1u32).neg();
 
     let sk = lambda_1_2 * x_is[0] + lambda_2_1 * x_is[1];
     let pk = X_is[0] * lambda_1_2 + X_is[1] * lambda_2_1;
-    //let pk = G * sk;
 
-    // sign msg 
+    // sign message 
     let m = Scalar::rand();
     let k = Scalar::rand();
     let R = {
