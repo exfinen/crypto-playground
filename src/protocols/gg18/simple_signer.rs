@@ -4,7 +4,6 @@
 
 use crate::{
   building_block::secp256k1::{
-    affine_point::AffinePoint,
     jacobian_point::JacobianPoint,
     scalar::Scalar,
   },
