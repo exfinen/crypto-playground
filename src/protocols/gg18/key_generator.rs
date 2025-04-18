@@ -229,14 +229,14 @@ impl KeyGenerator {
     // i.e. use zkp of knowing the p_i and q_i
   }
 
-  pub async fn generate_key(&mut self) -> Result<(), String> {
+  pub async fn generate_key(&mut self) -> Result<(Scalar, JacobianPoint), String> {
     self.run_phase_1().await;
 
     self.run_phase_2().await?;
 
     self.run_phase_3().await;
 
-    Ok(())
+    Ok((self.x_i.unwrap(), self.X_i.unwrap()))
   }
 }
 
@@ -272,9 +272,46 @@ mod tests {
       }))
     }
 
-    for handle in handles {
-      handle.await.map_err(|e| e.to_string())??;
-    }
+    // TODO don't return shared private key
+    let res: Vec<_> = futures::future::join_all(handles).await
+      .into_iter()
+      .map(|res| res.unwrap().unwrap())
+      .collect();
+
+    let x_is = res.iter().map(|(x_i, _)| x_i).collect::<Vec<_>>();
+    let X_is = res.iter().map(|(_, X_i)| X_i).collect::<Vec<_>>();
+
+    println!("x_i: {:?}", x_is);
+    println!("X_i: {:?}", X_is);
+
+
+    // lagrange intepolation with generator 0 and generator 1 key pairs
+    let lambda_1_2 = Scalar::from(2u32);
+    let lambda_2_1 = Scalar::from(1u32).neg();
+
+    let sk = lambda_1_2 * x_is[0] + lambda_2_1 * x_is[1];
+    let pk = X_is[0] * lambda_1_2 + X_is[1] * lambda_2_1;
+
+    // sign msg 
+    let G = JacobianPoint::get_base_point();
+    let m = Scalar::rand();
+    let k = Scalar::rand();
+    let R = {
+      let p = G * k.inv();
+      p.to_affine()
+    };
+    let r: Scalar = R.x().into();
+    let s = k * m + k * r * sk;
+
+    // verify signature
+    let u1 = &s.inv() * m;
+    let u2 = &s.inv() * &r;
+
+    let R_prime = G * u1 + pk * u2;
+    let r_prime: Scalar = R_prime.to_affine().x().into();
+
+    assert!(r == r_prime);
+
     Ok(())
   }
 }

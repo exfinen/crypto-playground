@@ -33,11 +33,10 @@ impl Signature {
     let u2 = &self.s.inv() * &self.r;
 
     let g = JacobianPoint::get_base_point();
-    let R_pt = g * u1 + pk * u2;
-    let R_pt: AffinePoint = R_pt.into();
-    let r_prime: Scalar = R_pt.x().into();
+    let R = g * u1 + pk * u2;
+    let r: Scalar = R.to_affine().x().into();
 
-    self.r == r_prime
+    self.r == r
   }
 
   pub fn to_der(&self) -> Vec<u8> {
