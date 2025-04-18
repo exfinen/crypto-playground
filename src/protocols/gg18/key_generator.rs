@@ -284,6 +284,7 @@ mod tests {
     println!("x_i: {:?}", x_is);
     println!("X_i: {:?}", X_is);
 
+    let G = JacobianPoint::get_base_point();
 
     // lagrange intepolation with generator 0 and generator 1 key pairs
     let lambda_1_2 = Scalar::from(2u32);
@@ -291,9 +292,9 @@ mod tests {
 
     let sk = lambda_1_2 * x_is[0] + lambda_2_1 * x_is[1];
     let pk = X_is[0] * lambda_1_2 + X_is[1] * lambda_2_1;
+    //let pk = G * sk;
 
     // sign msg 
-    let G = JacobianPoint::get_base_point();
     let m = Scalar::rand();
     let k = Scalar::rand();
     let R = {
