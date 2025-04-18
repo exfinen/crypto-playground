@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+use crate::building_block::secp256k1::jacobian_point::JacobianPoint;
 use crate::building_block::secp256k1::{
   jacobian_point::JacobianPoint as Point,
   scalar::Scalar,
@@ -33,15 +34,20 @@ pub struct KeyGenerator {
   network: Arc<Network>,
   pedersen: Arc<PedersenCommitment>,
   num_n_bits: u32,
+  // phase 1 result
+  u_i: Option<Scalar>,
+  dec_U_i: Option<Decommitment>,
+  // phase 2 result
   pub x_i: Option<Scalar>, // shard private key
   pub X_i: Option<Point>, // shard public key
+  // phase 3 result
 }
 
-const KGC_BROADCAST: BroadcastId = BroadcastId(1);
-const KGD_BROADCAST: BroadcastId = BroadcastId(2);
-const PUBKEY_BROADCAST: BroadcastId = BroadcastId(3);
-const DECOMM_BROADCAST: BroadcastId = BroadcastId(4);
-const A_I_BROADCAST: BroadcastId = BroadcastId(5);
+const COM_U_I_BCAST: BroadcastId = BroadcastId(1);
+const DEC_U_I_BCAST: BroadcastId = BroadcastId(2);
+const E_I_BCAST: BroadcastId = BroadcastId(3);
+const DECOMM_BCAST: BroadcastId = BroadcastId(4);
+const A_I_BCAST: BroadcastId = BroadcastId(5);
 
 const P_I_UNICAST: UnicastId = UnicastId(1);
 const P_I: ValueId = ValueId(1);
@@ -60,37 +66,31 @@ impl KeyGenerator {
       network,
       pedersen,
       num_n_bits, 
+      //
+      u_i: None,
+      dec_U_i: None,
+      //
       x_i: None,
       X_i: None,
     }
   }
 
-  pub async fn generate_key(&mut self) {
-    let pedersen = &self.pedersen;
-
-    //// Phase 1
+  pub async fn run_phase_1(&mut self) {
     let u_i = Scalar::from(self.generator_id + 1);
+    self.u_i = Some(u_i);
 
-    let comm_pair = {
-      let blinding_factor = &Scalar::rand();
-      pedersen.commit(&u_i, blinding_factor)
-    };
+    let comm_pair = self.pedersen.commit(&u_i);
 
-    // broadcast KGC_i commitment
-    let KGC_i = (self.generator_id, comm_pair.comm);
-    self.network.broadcast(
-      &KGC_BROADCAST,
-      &bincode::serialize(&KGC_i).unwrap(),
+    // broadcast Com(U_i)
+    self.network.broadcast_with_index(
+      &COM_U_I_BCAST,
+      self.generator_id,
+      &comm_pair.comm,
     ).await;
 
-    let mut KGC_is: Vec<(u32, Point)> = {
-      let xs = self.network.receive_broadcasts(KGC_BROADCAST).await;
-      xs.iter().map(|x| {
-        bincode::deserialize(&x).expect("Failed to deserialize KGC_i")
-      }).collect()
-    };
+    self.dec_U_i = Some(comm_pair.decomm);
 
-    // broadcast paillier pk: E_i
+    // broadcast E_i the public key for Paillier’s cryptosystem
     let (p, q) = Paillier::gen_p_q(self.num_n_bits);
     let paillier = Paillier::new(
       256,
@@ -98,165 +98,145 @@ impl KeyGenerator {
       &q,
       GCalcMethod::Random,
     );
-    self.network.broadcast(
-      &PUBKEY_BROADCAST,
-      &bincode::serialize(&paillier.pk).unwrap(),
+    self.network.broadcast_with_index(
+      &E_I_BCAST,
+      self.generator_id,
+      &paillier.pk,
     ).await;
+  }
 
-    // get all broadcast E_is
-    let E_is: Vec<PublicKey> = {
-      let xs = self.network.receive_broadcasts(PUBKEY_BROADCAST).await;
-      xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
-    };
-
-    // make sure all public keys are unique
-    for i in 0..E_is.len() {
-      for j in i+1..E_is.len() {
-        if E_is[i].n == E_is[j].n {
-          panic!("Not all public keys are unique");
-        }
-      }
-    }
-
-    //// Phase 2
-
-    // broadcast KGD_i -> obtains U_i
-    let KGD_i = (self.generator_id, comm_pair.decomm);
-
-    self.network.broadcast(
-      &DECOMM_BROADCAST,
-      &bincode::serialize(&KGD_i).unwrap(),
-    ).await;
-
-    // receive KGD_i from other parties
-    let mut KGD_is: Vec<(u32, Decommitment)> = {
-      let xs = self.network.receive_broadcasts(DECOMM_BROADCAST).await;
-      xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect()
-    };
-
-    // Decommit KGC_i/KGD_i to obtain U_i. then
-    // aggregate U_is to construct the public key
-    // also return a vector of U_is
-    let (pk, U_is) = {
-      let g = &pedersen.g;
-      let h = &pedersen.h;
-
-      // sort KCG_is and KGD_is by id
-      KGC_is.sort_by_key(|(id, _)| *id);
-      KGD_is.sort_by_key(|(id, _)| *id);
-      if KGC_is.len() != KGD_is.len() {
-        panic!("Phase 2: number of commitments and decommitments don't match");
-      }
-
-      let mut pk = Point::point_at_infinity();
-      let mut U_is = vec![];
-
-      for x in KGC_is.iter().zip(KGD_is.iter())  {
-        let ((comm_id, comm),(decomm_id, decomm)) = x;
-        if comm_id != decomm_id {
-          panic!("Phase 2: IDs of commitment and decommitment don't match");
-        }
-        let comm_rec = g * decomm.secret + h * decomm.blinding_factor;
-        if &comm_rec != comm {
-          panic!("Phase 2: Invalid commitment");
-        }
-        let U_i = g * decomm.secret;
-        pk = pk + U_i;
-        U_is.push(U_i.clone());
-      }
-      (pk, U_is)
-    };
-
-    // construct a random polynomial of degree 1
-    // with the constant term u_i
+  pub async fn run_phase_2(&mut self) -> Result<(), String> {
+    // retrieve decommitment of Com(U_i)s
+    // construct a polynomial of degree 1 using u_i as the constant term
     let a_i = Scalar::rand();
-    let p_i = Box::new(move |x: u32| { u_i + a_i * Scalar::from(x) });
+    let u_i = self.u_i.unwrap();
+    let p_i = Box::new(move |x: u32| { &u_i + a_i * Scalar::from(x) });
 
-    // create a hiding of the coefficient of the degree 1 term and
-    // broadcast
-    let A_i = {
-      let g = Point::get_base_point();
-      let A_i = g * a_i;
-      (self.generator_id, A_i)
-    };
+    //// make sure all public keys are unique
+    //for i in 0..E_is.len() {
+    //  for j in i+1..E_is.len() {
+    //    if E_is[i].n == E_is[j].n {
+    //      panic!("Not all public keys are unique");
+    //    }
+    //  }
+    //}
+    let generators: Vec<u32> = (0..self.num_generators as u32).collect();
 
-    self.network.broadcast(
-      &A_I_BROADCAST,
-      &bincode::serialize(&A_i).unwrap(),
-    ).await;
-
-    // receive A_is of all parties including this party
-    let A_is: Vec<(u32, Point)> = {
-      let xs = self.network.receive_broadcasts(A_I_BROADCAST).await;
-      let mut xs: Vec<(u32, Point)> = 
-        xs.iter().map(|x| bincode::deserialize(&x).unwrap()).collect();
-      xs.sort_by_key(|(id, _)| *id);
-      xs
-    };
-
-    // evaluate the polynomial at the points for other parties
-    // and send the results to them
-    for id in 0..self.num_generators as u32 {
-      if id == self.generator_id {
+    // unicast p_i(gen_id) to other generators
+    for to in &generators {
+      if to == &self.generator_id { // don't seit it to self
         continue;
       }
-      let pt = id + 1;
-      let res = p_i(pt);
       let dest = UnicastDest::new(
         P_I_UNICAST,
         self.generator_id,
-        id,
+        *to,
         P_I,
       );
-      let ser_res = bincode::serialize(&res).unwrap(); 
-      self.network.unicast(&dest, &ser_res).await;
+      let p_i_eval = p_i(to + 1);
+      self.network.unicast(&dest, &p_i_eval).await;
     }
 
-    // construct p_is receiving missing p_is from other parties
-    let p_is = {
-      let mut p_is = vec![];
-      for id in 0..self.num_generators as u32 {
-        if id == self.generator_id {
-          let pt = id + 1;
-          let p_i = p_i(pt);
-          p_is.push(p_i);
-        } else {
+    // construct p_i(this_gen_id)s from local p_i 
+    // and p_is received from other generators
+    let eval_p_is = {
+      let eval_point = self.generator_id + 1;
+
+      let mut eval_p_is = vec![];
+      for from in generators {
+        if from == self.generator_id { // if self to self, eval locally
+          eval_p_is.push(p_i(eval_point));
+        } else { // otherwise, receive from other generators
           let dest = UnicastDest::new(
             P_I_UNICAST,
-            id,
+            from,
             self.generator_id,
             P_I,
           );
-          let ser_p_i: Vec<u8> = self.network.receive_unicast(&dest).await;
-          let p_i = bincode::deserialize(&ser_p_i).unwrap();
-          p_is.push(p_i);
+          let eval_p_i = self.network.receive_unicast(&dest).await;
+          eval_p_is.push(eval_p_i);
         }
       }
-      p_is
+      eval_p_is
     };
 
-    // using Feldman VSS, verify that a compromiseed polynomial is not used
-    // to generate any of the shares
-    let g = Point::get_base_point();
-    for x in p_is.iter().zip(U_is.iter()).zip(A_is.iter()) {
-      let ((p_i, U_i), (_, A_i)) = x;
+    // create A_i (hiding of a_i) and broadcast
+    let A_i = Point::get_base_point() * a_i;
+    self.network.broadcast_with_index(
+      &A_I_BCAST,
+      self.generator_id,
+      &A_i,
+    ).await;
+
+    // retrieve broadcast A_is
+    let A_is = self.network.receive_idx_broadcasts(&A_I_BCAST).await;
+    
+    // broadcast Decommitment of Com(U_i)
+    self.network.broadcast_with_index(
+      &DEC_U_I_BCAST,
+      self.generator_id,
+      &self.dec_U_i.as_ref().unwrap(),
+    ).await;
+
+    // retrieve decommits of Com(U_i)
+    let dec_U_is: Vec<Decommitment> =
+      self.network.receive_idx_broadcasts(&DEC_U_I_BCAST).await;
+
+    // reconstruct U_is
+    let g = JacobianPoint::get_base_point();
+    let U_is: Vec<JacobianPoint> = dec_U_is.iter().map(|x| g * x.secret).collect();
+
+    // verify polynomials received from other generators are not compromised
+    // i.e. p_i(gen_id) * G ==  U_i + A_i
+    for (p_i, (A_i, U_i)) in eval_p_is.iter().zip(A_is.iter().zip(U_is)) {
       let lhs = g * p_i;
-      let pt = Scalar::from(self.generator_id + 1);
-      let rhs = U_i + A_i * pt;
+      let rhs = {
+        let eval_pt = Scalar::from(self.generator_id + 1);
+        U_i + A_i * eval_pt
+      };
       if lhs != rhs {
-        panic!("Phase 2: Malformed polynomial found");
+        return Err(format!("---> {}: Phase 2: compromised polynomial found", self.generator_id));
       }
     }
-
-    // calculate shard private key + sum(a_i)
-    self.x_i = Some(
-      p_is.iter().fold(Scalar::zero(), |acc, p_i| acc + p_i)
+ 
+    // calculate shard private key
+    let x_i = eval_p_is.iter().fold(
+      Scalar::zero(),
+      |acc, x| acc + x, 
     );
+    self.x_i = Some(x_i);
 
     // calculate shard public key
-    self.X_i = Some(
-      pk + A_is.iter().fold(Point::point_at_infinity(), |acc, (_, A_i)| acc + A_i)
+    let X_i = A_is.iter().fold(
+      JacobianPoint::point_at_infinity(),
+      |acc, x| acc + x, 
     );
+    self.X_i = Some(X_i);
+
+    Ok(())
+  }
+
+  pub async fn run_phase_3(&mut self) {
+    // retrieve E_is here?
+    let _E_is: Vec<PublicKey> =
+      self.network.receive_idx_broadcasts(&E_I_BCAST).await;
+
+    // 1. prove that the generator knows the shard private key x_i through zkp
+
+    // 2. prove that the generator knows the priv key for E_i
+
+    // N_i = p_i * q_i is the RSA modulus associated with E_i,
+    // i.e. use zkp of knowing the p_i and q_i
+  }
+
+  pub async fn generate_key(&mut self) -> Result<(Scalar, JacobianPoint), String> {
+    self.run_phase_1().await;
+
+    self.run_phase_2().await?;
+
+    self.run_phase_3().await;
+
+    Ok((self.x_i.unwrap(), self.X_i.unwrap()))
   }
 }
 
@@ -267,7 +247,7 @@ mod tests {
   use std::sync::Arc;
 
   #[tokio::test]
-  async fn test_key_gen() {
+  async fn test_key_gen() -> Result<(), String> {
     let network = Arc::new(Network::new(3));
     let num_generators = 3;
     let pedersen = Arc::new(PedersenCommitment::new());
@@ -288,13 +268,52 @@ mod tests {
     let mut handles = vec![];
     for mut generator in generators {
       handles.push(spawn(async move {
-        generator.generate_key().await;
-      }));
+        generator.generate_key().await
+      }))
     }
 
-    for handle in handles {
-      handle.await.unwrap();
-    }
+    // TODO don't return shared private key
+    let res: Vec<_> = futures::future::join_all(handles).await
+      .into_iter()
+      .map(|res| res.unwrap().unwrap())
+      .collect();
+
+    let x_is = res.iter().map(|(x_i, _)| x_i).collect::<Vec<_>>();
+    let X_is = res.iter().map(|(_, X_i)| X_i).collect::<Vec<_>>();
+
+    println!("x_i: {:?}", x_is);
+    println!("X_i: {:?}", X_is);
+
+    let G = JacobianPoint::get_base_point();
+
+    // lagrange intepolation with generator 0 and generator 1 key pairs
+    let lambda_1_2 = Scalar::from(2u32);
+    let lambda_2_1 = Scalar::from(1u32).neg();
+
+    let sk = lambda_1_2 * x_is[0] + lambda_2_1 * x_is[1];
+    let pk = X_is[0] * lambda_1_2 + X_is[1] * lambda_2_1;
+    //let pk = G * sk;
+
+    // sign msg 
+    let m = Scalar::rand();
+    let k = Scalar::rand();
+    let R = {
+      let p = G * k.inv();
+      p.to_affine()
+    };
+    let r: Scalar = R.x().into();
+    let s = k * m + k * r * sk;
+
+    // verify signature
+    let u1 = &s.inv() * m;
+    let u2 = &s.inv() * &r;
+
+    let R_prime = G * u1 + pk * u2;
+    let r_prime: Scalar = R_prime.to_affine().x().into();
+
+    assert!(r == r_prime);
+
+    Ok(())
   }
 }
 
