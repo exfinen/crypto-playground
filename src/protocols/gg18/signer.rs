@@ -412,9 +412,7 @@ impl Signer {
     let k_i = self.k_i.as_ref().unwrap();
     let sigma_i = self.sigma_i.as_ref().unwrap();
     let r = self.r.as_ref().unwrap();
-
-    //let m = (self.hasher)(&self.M);
-    let m = Scalar::from(11u32);
+    let m = (self.hasher)(&self.M);
 
     let s_i = m * k_i + r * sigma_i;
 
@@ -570,7 +568,7 @@ mod tests {
     let pedersen = PedersenCommitment::new();
 
     // message M to sign in Z_n 
-    let M = Scalar::from(11u32); //rand();
+    let M = Scalar::rand();
 
     let (p, q) = Paillier::gen_p_q(num_n_bits);
     let n = p * q;
