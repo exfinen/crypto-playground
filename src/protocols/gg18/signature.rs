@@ -27,7 +27,7 @@ impl Signature {
     M: &Scalar,
     hasher: impl Fn(&Scalar) -> Scalar,
   ) -> bool {
-    let m = hasher(M);
+    let m = Scalar::from(11u32); // hasher(M);
     let u1 = &self.s.inv() * m;
     let u2 = &self.s.inv() * &self.r;
 

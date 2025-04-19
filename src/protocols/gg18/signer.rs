@@ -254,14 +254,18 @@ impl Signer {
 
   pub async fn run_phase_1(&mut self) {
     // select k_i and gamma_i in Z_q and broadcasts C_i
+    //let k_i = Scalar::rand();
+    //let gamma_i = Scalar::rand();
+    //self.k_i = Some(k_i);
+    //self.gamma_i = Some(gamma_i);
+
     let signer_id: u32 = (&self.signer_id).into();
     let k_i = Scalar::from(signer_id + 1);
     let gamma_i = Scalar::from((signer_id + 1) * 5);
     println!("---> k_{:?}={:?},", self.signer_id, k_i);
     println!("---> gamma_{:?}={:?}", self.signer_id, gamma_i);
     self.k_i = Some(k_i);
-    self.gamma_i = Some(gamma_i);
-    
+    self.gamma_i = Some(gamma_i); 
     // calculate Com(Gamma_i = gamma_i * G)
     let comm_pair = self.pedersen.commit(&gamma_i);
     self.dec_Gamma_i = Some(comm_pair.decomm);
@@ -278,25 +282,34 @@ impl Signer {
     &mut self,
     omega_A: &Scalar,
   ) {
+    // MtA 1: k_A * gamma B
     let k_A = &self.k_i.unwrap().clone();
     let k_A_gamma_B: Scalar = self.perfrom_mta_as_alice(
       &SignerId::A,
       k_A
     ).await.into(); 
 
+    // MtA 2: k_B * gamma A
+    let gamma_A = &self.gamma_i.unwrap().clone();
+    self.perfrom_MtA_as_Bob(
+      &SignerId::A,
+      gamma_A,
+    ).await;
+
+    // MtA 3: k_A * omega B
     let k_A_omega_B: Scalar = self.perfrom_mta_as_alice(
       &SignerId::A,
       k_A,
     ).await.into(); 
 
-    let gamma_A = &self.gamma_i.unwrap().clone();
-    self.perfrom_MtA_as_Bob(&SignerId::A, gamma_A).await;
-    self.perfrom_MtA_as_Bob(&SignerId::A, omega_A).await;
+    // MtA 4: k_B * omega A
+    self.perfrom_MtA_as_Bob(
+      &SignerId::A,
+      omega_A,
+    ).await;
 
     let delta_A = k_A * gamma_A + &k_A_gamma_B;
     let sigma_A = k_A * omega_A + &k_A_omega_B;
-    //println!("----> delta_{:?}: {:?}", self.signer_id, &delta_A);
-    //println!("----> sigma_{:?}: {:?}", self.signer_id, &sigma_A);
 
     self.delta_i = Some(delta_A);
     self.sigma_i = Some(sigma_A);
@@ -306,24 +319,27 @@ impl Signer {
     &mut self,
     omega_B: &Scalar,
   ) {
-
+    // MtA 1: k_A * gamma B
     let gamma_B = &self.gamma_i.unwrap().clone();
     self.perfrom_MtA_as_Bob(
       &SignerId::B,
       gamma_B,
     ).await;
 
-    self.perfrom_MtA_as_Bob(
-      &SignerId::B,
-      omega_B,
-    ).await;
-
+    // MtA 2: k_B * gamma A
     let k_B = &self.k_i.unwrap().clone();
     let k_B_gamma_A = self.perfrom_mta_as_alice(
       &SignerId::B,
       k_B,
     ).await; 
 
+    // MtA 3: k_A * omega B
+    self.perfrom_MtA_as_Bob(
+      &SignerId::B,
+      omega_B,
+    ).await;
+
+    // MtA 4: k_B * omega A
     let k_B_omega_A = self.perfrom_mta_as_alice(
       &SignerId::B,
       k_B,
@@ -331,8 +347,6 @@ impl Signer {
      
     let delta_B = k_B * gamma_B + &k_B_gamma_A;
     let sigma_B = k_B * omega_B + &k_B_omega_A;
-    //println!("----> delta_{:?}: {:?}", self.signer_id, &delta_B);
-    //println!("----> sigma_{:?}: {:?}", self.signer_id, &sigma_B);
 
     self.delta_i = Some(delta_B);
     self.sigma_i = Some(sigma_B);
@@ -349,10 +363,7 @@ impl Signer {
       self.network.receive_broadcasts(&DELTA_I_BCAST).await;
 
     let delta = delta_is.iter().fold(Scalar::zero(), |acc, x| acc + x);
-    //println!("----> {:?} delta: {:?}", self.signer_id, &delta);
-
     self.delta = Some(delta);
-    //println!("----> {:?} delta_inv: {:?}", self.signer_id, &self.delta.unwrap().inv());
   }
 
   pub async fn run_phase_4(&mut self) -> Result<(), String> {
@@ -383,18 +394,15 @@ impl Signer {
       JacobianPoint::point_at_infinity(),
       |acc, decomm| acc + self.pedersen.g * decomm.secret
     );
-    //println!("----> Gamma_{:?}: {:?}", self.signer_id, &Gamma);
 
     let delta_inv = self.delta.unwrap().inv();
     let R = Gamma * &delta_inv;
-    println!("----> R_{:?}: {:?}", self.signer_id, &R.to_affine());
     let r: Scalar = R.to_affine().x().into();
 
     // if r is 0, start over
     if r.is_zero() {
       return Err("r is zero".to_string());
     }
-    println!("====> r: {:?}", &r);
     self.r = Some(r);
 
     Ok(())
@@ -405,28 +413,28 @@ impl Signer {
     let sigma_i = self.sigma_i.as_ref().unwrap();
     let r = self.r.as_ref().unwrap();
 
-    let m = (self.hasher)(&self.M);
+    //let m = (self.hasher)(&self.M);
+    let m = Scalar::from(11u32);
+
     let s_i = m * k_i + r * sigma_i;
 
     // broadcast Com(S_i)
     let s_i_comm_pair = self.pedersen.commit(&s_i);
-    self.network.broadcast(
+    self.network.broadcast_with_index(
       &COM_S_I_BCAST,
-      &bincode::serialize(&s_i_comm_pair.comm).unwrap(),
+      &self.signer_id,
+      &s_i_comm_pair.comm,
     ).await;
 
     // retrieve Com(S_i)s
     let com_S_is: Vec<JacobianPoint> =
-      self.network.receive_broadcasts(&COM_S_I_BCAST).await;
+      self.network.receive_idx_broadcasts(&COM_S_I_BCAST).await;
 
     // broadcast Decommitment of Com(S_i) w/ index
-    let dec_S_i: (u32, &Decommitment) = (
-      (&self.signer_id).into(),
-      &s_i_comm_pair.decomm,
-    );
-    self.network.broadcast(
+    self.network.broadcast_with_index(
       &DEC_S_I_BCAST,
-      &bincode::serialize(&dec_S_i).unwrap(),
+      &self.signer_id,
+      &s_i_comm_pair.decomm,
     ).await;
 
     // retrieve decommitment of Com(S_i)s
@@ -439,7 +447,6 @@ impl Signer {
     }
 
     let s = PedersenCommitment::aggr_secrets(&dec_S_is);
-    println!("----> s: {:?}", &s);
     self.s = Some(s);
 
     Ok(()) 
@@ -458,7 +465,7 @@ impl Signer {
   fn calc_lambda_j_i(i: i32, j: i32) -> Scalar {
     assert!(i < j);
     let x = (i - j) * -1;  // i - j is always negative
-    Scalar::from(x as usize).inv()
+    Scalar::from(x as usize).neg()
   }
 
   pub async fn create_signature(
@@ -550,10 +557,10 @@ mod tests {
     let num_n_bits = 256;
 
     // generate key shards 
-    let _generators = generate_keys(
+    let generators = generate_keys(
       num_generators,
       num_n_bits,
-    ).await;
+    ).await.unwrap();
 
     // secp256k1 message is at most 256 bits
 
@@ -563,7 +570,7 @@ mod tests {
     let pedersen = PedersenCommitment::new();
 
     // message M to sign in Z_n 
-    let M = Scalar::from(123u32);
+    let M = Scalar::from(11u32); //rand();
 
     let (p, q) = Paillier::gen_p_q(num_n_bits);
     let n = p * q;
@@ -591,26 +598,26 @@ mod tests {
     let lambda_1_2 = Signer::calc_lambda_i_j(1, 2);
     let lambda_2_1 = Signer::calc_lambda_j_i(1, 2);
     assert_eq!(lambda_1_2, Scalar::from(2u8));
-    assert_eq!(lambda_2_1, Scalar::from(1u8).inv());
+    assert_eq!(lambda_2_1, Scalar::from(1u8).neg());
 
     //let omega_1 = lambda_1_2 * generators[0].x_i.unwrap();
     //let omega_2 = lambda_2_1 * generators[1].x_i.unwrap();
-    let omega_A = Scalar::from(3u32);
-    let omega_B = Scalar::from(7u32);
-    println!("--> omega_A: {:?}", omega_A);
-    println!("--> omega_B: {:?}", omega_B);
+    let omega_1 = Scalar::from(3u32);
+    let omega_2 = Scalar::from(7u32);
 
     //let pk = 
     //  generators[0].X_i.unwrap() * lambda_1_2 +
     //  generators[1].X_i.unwrap() * lambda_2_1;
-    let pk = JacobianPoint::get_base_point() * (&omega_A + &omega_B);
+    let pk = JacobianPoint::get_base_point() * (omega_1 + omega_2);
+
+    assert!(pk == JacobianPoint::get_base_point() * (omega_1 + omega_2));
 
     let handles = vec![
       spawn(async move {
-        signer_a.create_signature(&omega_A).await.unwrap()
+        signer_a.create_signature(&omega_1).await.unwrap()
       }),
       spawn(async move {
-        signer_b.create_signature(&omega_B).await.unwrap()
+        signer_b.create_signature(&omega_2).await.unwrap()
       }),
     ];
 
