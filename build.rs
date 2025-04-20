@@ -35,8 +35,8 @@ fn main() {
       .status()
       .expect("Failed to run configure");
 
-    Command::new("sh")
-      .args(["make", "-j", &num_cpus::get().to_string()])
+    Command::new("make")
+      .args(["-j", &num_cpus::get().to_string()])
       .current_dir(&secp256k1_dir)
       .status()
       .expect("Failed to build secp256k1-export");
