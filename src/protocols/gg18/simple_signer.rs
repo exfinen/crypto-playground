@@ -30,10 +30,10 @@ impl SimpleSigner {
     let R = (&Gamma * delta.inv()).to_affine();
     let r: Scalar = R.x().into();
     println!("====> r: {:?}", &r);
-    //println!("====> R: {:?}", &R);
-    //println!("====> m: {:?}", &m);
-    //println!("====> k: {:?}", &k);
-    //println!("====> r: {:?}", &r);
+    println!("====> R: {:?}", &R);
+    println!("====> m: {:?}", &m);
+    println!("====> k: {:?}", &k);
+    println!("====> r: {:?}", &r);
 
     let kx = k * x; // = sigma
     //println!("====> kx: {:?}", &kx);

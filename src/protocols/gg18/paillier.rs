@@ -4,6 +4,7 @@
 use rug::{
   Complete,
   Integer,
+  ops::Pow,
   rand::MutRandState,
 };
 use crate::building_block::util::{
@@ -29,11 +30,12 @@ pub struct PublicKey {
   pub g: Integer,
 }
 
+#[derive(Clone, Debug)]
 pub struct SecretKey {
   // p: Integer,
   // q: Integer,
-  lambda: Integer,
-  mu: Integer,
+  pub lambda: Integer,
+  pub mu: Integer,
 }
 
 pub struct PaillierInstance {
@@ -43,19 +45,19 @@ pub struct PaillierInstance {
 }
 
 impl Paillier {
-  pub fn gen_p_q(num_n_bits: u32) -> (Integer, Integer) {
-    // generate distinct primes p and q
-    // s.t. p*q=n is equal to or above `num_n_bits` bits
+  pub fn gen_p_q(ss_order: &Integer) -> (Integer, Integer) {
     let mut rng = get_32_byte_rng();
-    let num_pq_bits = num_n_bits / 2 + 10; // try to make p*q above 256 bits
+    let threshold = ss_order.clone().pow(8u32);
+    let num_pq_bits = threshold.significant_bits() / 2 + 1;
 
     loop {
       let p = gen_random_prime(num_pq_bits, &mut rng);
       let q = gen_random_prime(num_pq_bits, &mut rng);
-      if &p == &q { continue; }
-
-      let n: Integer = (&p * &q).into();
-      if n.significant_bits() >= num_n_bits {
+      if p == q {
+        continue;
+      }
+      let n = (&p * &q).complete();
+      if n > threshold {
         break (p, q);
       }
     }
@@ -68,18 +70,19 @@ impl Paillier {
   }
 
   fn calc_g(
-    num_bits: u32,
     rng: &mut dyn MutRandState,
     calc_method: &GCalcMethod,
     n: &Integer,
     nn: &Integer,
   ) -> Integer {
+    let nn_bits = nn.significant_bits();
+
     match calc_method {
       GCalcMethod::Random => {
         // g is an element of Z^*_n^2
         // such that gcd(g, n^2) = 1
         loop {
-          let g = gen_random_number(num_bits, rng);
+          let g = gen_random_number(nn_bits, rng) % nn;
           if &g.clone().gcd(&nn) == Integer::ONE {
             break g;
           }
@@ -89,7 +92,7 @@ impl Paillier {
         loop {
           // find k that is coprime to n
           let k = loop {
-            let k = gen_random_number(num_bits, rng);
+            let k = gen_random_number(nn_bits, rng) % nn;
             if &k.clone().gcd(&n) == Integer::ONE {
               break k;
             }
@@ -104,13 +107,12 @@ impl Paillier {
   }
 
   pub fn new(
-    num_bits: u32,
     p: &Integer,
     q: &Integer,
     g_calc_method: GCalcMethod,
   ) -> PaillierInstance {
     if p == q {
-      panic!("p and q should be distinct primes");
+      panic!("p and q must be distinct primes");
     }
     let mut rng = get_32_byte_rng();
 
@@ -123,9 +125,7 @@ impl Paillier {
 
     let (g, mu) = {
       loop {
-        let g = Self::calc_g(
-          num_bits, &mut rng, &g_calc_method, &n, &nn,
-        );
+        let g = Self::calc_g(&mut rng, &g_calc_method, &n, &nn);
         let g_lambda = g.clone().pow_mod(&lambda, &nn).unwrap();
         let k = Self::L(&g_lambda, &n);
         // k needs be a coprime to g to have an inverse
@@ -148,23 +148,25 @@ impl Paillier {
 
   // encrypted message is in multiplicative group modulo n^2
   pub fn encrypt(
-    num_bits: u32,
     rng: &mut dyn MutRandState,
     m: &Integer, // plaintext
     pk: &PublicKey,
   ) -> Integer {
     if m < &Integer::ZERO || m >= &pk.n {
-      panic!("m is outside the range (0 <= m < n)");
+      panic!("m is outside the range (0 <= m < n); m ({} bits) = {:?}, n ({} bits) = {:?}", m.significant_bits(), m, pk.n.significant_bits(), pk.n);
     }
 
     let nn = &(&pk.n * &pk.n).complete();
 
     // Z_{n^2} is multiplicative group of integers modulo n^2 (Z/n^2Z)
     // select r randomly from Z_{n^2}
-    let r = loop {
-      let r = gen_random_number(num_bits, rng) % nn;
-      if &r.clone().gcd(nn) == Integer::ONE {
-        break r;
+    let r = {
+      let nn_bits = nn.significant_bits();
+      loop {
+        let r = gen_random_number(nn_bits, rng) % nn;
+        if &r.clone().gcd(nn) == Integer::ONE {
+          break r;
+        }
       }
     };
 
@@ -209,7 +211,9 @@ impl Paillier {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use crate::building_block::secp256k1::util::secp256k1_group_order;
+
+use super::*;
 
   #[test]
   fn test_add() {
@@ -227,13 +231,13 @@ mod tests {
 
   #[test]
   fn test_scalar_mul() {
-      let pk = PublicKey {
-          n: Integer::from(15),
-          g: Integer::from(16),
-      };
-      // 11^9 mod 225 should be 116
-      let res = Paillier::scalar_mul(&Integer::from(11), &Integer::from(9), &pk);
-      assert_eq!(res, Integer::from(116));
+    let pk = PublicKey {
+        n: Integer::from(15),
+        g: Integer::from(16),
+    };
+    // 11^9 mod 225 should be 116
+    let res = Paillier::scalar_mul(&Integer::from(11), &Integer::from(9), &pk);
+    assert_eq!(res, Integer::from(116));
   }
 
   #[test]
@@ -241,21 +245,19 @@ mod tests {
     use std::io::{self, Write};
 
     let mut rng = get_32_byte_rng();
-    let num_bits = 64;
+    let num_bits = 256;
 
+    let ss_order = secp256k1_group_order();
     for _ in 0..10 {
-      let (p, q) = Paillier::gen_p_q(num_bits);
+      let (p, q) = Paillier::gen_p_q(&ss_order);
       let inst = Paillier::new(
-        num_bits,
-        &p,
-        &q,
-        GCalcMethod::Random
+        &p, &q, GCalcMethod::Random
       );
       let (pk, sk) = (&inst.pk, &inst.sk);
 
       let m = gen_random_number(num_bits, &mut rng) % &pk.n;
 
-      let c = Paillier::encrypt(num_bits, &mut rng, &m, &pk);
+      let c = Paillier::encrypt(&mut rng, &m, &pk);
       let m_prime = Paillier::decrypt(&c, &sk, &pk);
       assert_eq!(m, m_prime);
 
@@ -269,20 +271,18 @@ mod tests {
     let mut rng = get_32_byte_rng();
     let num_bits = 64;
 
-    let (p, q) = Paillier::gen_p_q(num_bits);
+    let ss_order = secp256k1_group_order();
+    let (p, q) = Paillier::gen_p_q(&ss_order);
     let inst = Paillier::new(
-      num_bits,
-      &p,
-      &q,
-      GCalcMethod::Random,
+      &p, &q, GCalcMethod::Random,
     );
     let (pk, sk) = (&inst.pk, &inst.sk);
 
     let m1 = gen_random_number(num_bits, &mut rng) % &pk.n;
     let m2 = gen_random_number(num_bits, &mut rng) % &pk.n;
 
-    let c1 = Paillier::encrypt(num_bits, &mut rng, &m1, &pk);
-    let c2 = Paillier::encrypt(num_bits, &mut rng, &m2, &pk);
+    let c1 = Paillier::encrypt(&mut rng, &m1, &pk);
+    let c2 = Paillier::encrypt(&mut rng, &m2, &pk);
 
     let c3 = Paillier::add(&c1, &c2, &pk);
     let m3 = Paillier::decrypt(&c3, &sk, &pk);

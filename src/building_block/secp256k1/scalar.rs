@@ -89,6 +89,40 @@ impl Scalar {
     Scalar::from(buf)
   }
 
+  pub fn significant_bits(&self) -> u32 {
+    for (i, &limb) in self.d.iter().enumerate().rev() {
+      if limb != 0 {
+        let i = i as u32;
+        return (i as u32) * 64 + (64 - limb.leading_zeros());
+      }
+    }
+    0
+  }
+
+  pub fn rand_bits(n: usize) -> Self {
+      assert!(n <= 256, "n should be less than or equal to 256");
+      if n == 0 {
+        return Scalar::zero();
+      }
+      let top_limb = (n - 1) / 64;
+      let rem_bits  = (n - 1) % 64 + 1;
+
+      let mut d = [0u64;4];
+      let mut rng = OsRng;
+      for i in 0..=top_limb {
+        d[i] = rng.next_u64();
+      }
+
+      let mask = if rem_bits == 64 {
+        !0u64
+      } else {
+        (1u64 << rem_bits) - 1
+      };
+      d[top_limb] &= mask;
+
+      Scalar { d }
+  }
+
   pub fn to_hex(&self) -> String {
     let mut buf = [0u8; 32];
     for (i, limb) in self.d.iter().enumerate() {

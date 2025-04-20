@@ -7,15 +7,20 @@ use rug::{
   Complete,
 };
 use rug::Integer;
-use crate::protocols::gg18::paillier::{
-  GCalcMethod,
-  Paillier,
-  PublicKey,
-  SecretKey,
-};
-use crate::building_block::util::{
-  gen_random_number,
-  get_32_byte_rng,
+use crate::{
+  building_block::{
+    secp256k1::util::secp256k1_group_order,
+    util::{
+      gen_random_number,
+      get_32_byte_rng,
+    },
+  },
+  protocols::gg18::paillier::{
+    GCalcMethod,
+    Paillier,
+    PublicKey,
+    SecretKey,
+  },
 };
 
 pub struct Alice {
@@ -27,22 +32,19 @@ pub struct Alice {
 
 impl Alice {
   pub fn new(
-    num_bits: u32,
     a: &Integer,
   ) -> Alice {
-    let (p, q) = Paillier::gen_p_q(num_bits);
+    let ss_order = secp256k1_group_order();
+    let (pail_p, pail_q) = Paillier::gen_p_q(&ss_order);
     let inst = Paillier::new(
-      num_bits,
-      &p,
-      &q,
+      &pail_p,
+      &pail_q,
       GCalcMethod::Random,
     );
     let (pk, sk) = (inst.pk, inst.sk);
     let mut rng = get_32_byte_rng();
 
-    let c_a = Paillier::encrypt(
-      num_bits, &mut rng, a, &pk
-    );
+    let c_a = Paillier::encrypt(&mut rng, a, &pk);
 
     // TODO implement range proof of a < q^3
     let rp_a_lt_q3 = Integer::ZERO;
@@ -64,7 +66,7 @@ impl Alice {
     // TODO check if the two range proofs are valid
  
     // alice decrypts c_b to get alpha = ab + beta'
-    let alpha = Paillier::decrypt(c_b, &self.sk, &self.pk);
+    let alpha = Paillier::decrypt(c_b, &self.sk, &self.pk) % &self.pk.n;
     Some(alpha)
   }
 }
@@ -78,8 +80,8 @@ pub struct Bob {
 
 impl Bob {
   pub fn new(
+    ss_order: &Integer, // order of group/field for secret sharing
     c_a: &Integer,
-    q: &Integer, // paillier q
     pk: &PublicKey,
     _rp_a_lt_q3: &Integer,
     b: &Integer,
@@ -88,14 +90,14 @@ impl Bob {
     
     let mut rng = get_32_byte_rng();
 
-    // choose beta' uniformly at random in Z_q
+    // sample beta' from z_{ss_order^5}
+    let ss_order_bits_pow_5 = ss_order.pow(5).complete();
     let beta_prime = gen_random_number(
-      q.significant_bits(),
+      ss_order_bits_pow_5.significant_bits(),
       &mut rng,
-    );
-
+    ) % ss_order_bits_pow_5;
+    
     let c_beta_prime = Paillier::encrypt(
-      pk.n.significant_bits(),
       &mut rng,
       &beta_prime,
       pk,
@@ -111,15 +113,17 @@ impl Bob {
       Paillier::add(&c_a_times_b, &c_beta_prime, pk)
     };
 
-    // beta in Z_q
-    let beta = {
-      let neg_beta_prime = (&beta_prime * -1i8).complete() % q;
-      q + neg_beta_prime
-    };
+    // beta in Z_ss_order
+    let beta_prime = beta_prime % ss_order;
+    let beta: Integer = ((ss_order - &beta_prime).complete() % ss_order).into();
 
-    // TODO implement this
-    let rp_b_lt_q3 = Integer::ZERO; // beta' is in Z_q^5
-    let rp_b_lt_q3_bp_le_q7 = Integer::ZERO; // b < q^3 and beta' < q^7
+    // TODO implement rp
+ 
+    // beta' is in Z_{ss_order^5}
+    let rp_b_lt_q3 = Integer::ZERO; 
+                                   
+    // b < {ss_order}^3 and beta' < {ss_order}^7
+    let rp_b_lt_q3_bp_le_q7 = Integer::ZERO;
 
     Bob {
       c_b,
@@ -165,21 +169,17 @@ mod tests {
 
   #[test]
   fn test_mta() {
-    let num_bits = 256u32; // assuming secp256k1 case
-    let alice = Alice::new(num_bits, &Integer::from(2));
+    let alice = Alice::new(&Integer::from(2));
     let mta = MtA::new(&alice.pk.n);
     let mut rng = get_32_byte_rng();
 
     let a = gen_random_number(mta.q3.significant_bits(), &mut rng);
-    let alice = Alice::new(
-      alice.pk.n.significant_bits(),
-      &a,
-    );
+    let alice = Alice::new(&a);
 
     let b = gen_random_number(mta.q3.significant_bits(), &mut rng);
     let bob = Bob::new(
-      &alice.c_a,
       &mta.q,
+      &alice.c_a,
       &alice.pk,
       &alice.rp_a_lt_q3,
       &b,
