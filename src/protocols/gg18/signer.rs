@@ -31,7 +31,6 @@ use crate::{
 };
 use std::sync::Arc;
 use rug::Integer;
-use rug::ops::Pow;
 
 pub struct Signer {
   signer_id: SignerId,

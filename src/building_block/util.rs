@@ -7,8 +7,6 @@ use rug::{
   Complete,
   Integer,
 };
-use sha2::{Digest, Sha256};
-use crate::building_block::secp256k1::scalar::Scalar;
 
 pub fn gen_random_binary_val() -> bool {
   if OsRng.next_u32() as u8 % 2 == 0 { false } else { true }
@@ -69,13 +67,6 @@ pub fn gen_random_prime(
     n += 1;
   }
   n.next_prime()
-}
-
-pub fn bitcoin_hasher(m: &Scalar) -> Scalar {
-  let mut hasher = Sha256::new();
-  hasher.update(m.secp256k1_serialize());
-  let hash = hasher.finalize();
-  Scalar::secp256k1_deserialize(&hash[0..32]).unwrap()
 }
 
 #[cfg(test)]
