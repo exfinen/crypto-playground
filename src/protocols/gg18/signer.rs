@@ -30,10 +30,7 @@ use crate::{
   },
 };
 use std::sync::Arc;
-use rug::{
-  ops::Pow,
-  Integer,
-};
+use rug::Integer;
 
 pub struct Signer {
   signer_id: SignerId,
@@ -491,6 +488,7 @@ mod tests {
       paillier::Paillier,
    },
   };
+  use rug::ops::Pow;
 
   async fn generate_keys(
     n: &Integer,
