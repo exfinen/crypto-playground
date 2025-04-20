@@ -17,8 +17,6 @@ jobs:
 
       - name: Set up Rust
         uses: actions/setup-rust@v1
-        with:
-        rust-version: stable
 
       - name: Run tests
         run: cargo test
