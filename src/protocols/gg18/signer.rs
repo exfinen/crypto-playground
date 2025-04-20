@@ -48,8 +48,6 @@ pub struct Signer {
   dec_Gamma_i: Option<Decommitment>,
   
   // phase 2 result
-  k_i_gamma_i: Option<Scalar>, // TODO drop this
-  k_i_omega_i: Option<Scalar>, // TODO drop this
   delta_i: Option<Scalar>,
   sigma_i: Option<Scalar>,
 
@@ -102,9 +100,7 @@ impl Signer {
       omega_i: omega_i.clone(),
       //
       k_i: None,
-      k_i_gamma_i: None,
       dec_Gamma_i: None,
-      k_i_omega_i: None,
       delta_i: None,
       sigma_i: None,
       gamma_i: None,
@@ -119,10 +115,7 @@ impl Signer {
     alice_id: &SignerId,
     secret: &Scalar,
   ) -> Scalar {
-    let alice = Alice::new(
-      self.ss_group_order.significant_bits(),
-      &secret.into(),
-    );
+    let alice = Alice::new(&secret.into());
  
     let bob_id = &alice_id.the_other();
 
@@ -244,18 +237,11 @@ impl Signer {
 
   pub async fn run_phase_1(&mut self) {
     // select k_i and gamma_i in Z_q and broadcasts C_i
-    //let k_i = Scalar::rand();
-    //let gamma_i = Scalar::rand();
-    //self.k_i = Some(k_i);
-    //self.gamma_i = Some(gamma_i);
-
-    let signer_id: u32 = (&self.signer_id).into();
-    let k_i = Scalar::rand_bits(100);
-    let gamma_i = Scalar::from(3128132898u32 + signer_id + 1);
-    println!("---> k_{:?} is {} bits: {:?}", self.signer_id, k_i.significant_bits(), k_i);
-    println!("---> gamma_{:?}={:?}", self.signer_id, gamma_i);
+    let k_i = Scalar::rand();
+    let gamma_i = Scalar::rand();
     self.k_i = Some(k_i);
-    self.gamma_i = Some(gamma_i); 
+    self.gamma_i = Some(gamma_i);
+
     // calculate Com(Gamma_i = gamma_i * G)
     let comm_pair = self.pedersen.commit(&gamma_i);
     self.dec_Gamma_i = Some(comm_pair.decomm);
@@ -278,8 +264,6 @@ impl Signer {
       k_A
     ).await.into(); 
 
-    self.k_i_gamma_i = Some(k_A_gamma_B.clone());
-
     // MtA 2: k_B * gamma A
     let gamma_A = &self.gamma_i.unwrap().clone();
     self.perfrom_MtA_as_Bob(
@@ -292,8 +276,6 @@ impl Signer {
       &SignerId::A,
       k_A,
     ).await.into(); 
-
-    self.k_i_omega_i = Some(k_A_omega_B.clone());
 
     let omega_A = &self.omega_i.clone();
 
@@ -327,8 +309,6 @@ impl Signer {
       k_B,
     ).await; 
 
-    self.k_i_gamma_i = Some(k_B_gamma_A.clone());
-
     let omega_B = &self.omega_i.clone();
 
     // MtA 3: k_A * omega B
@@ -343,8 +323,6 @@ impl Signer {
       k_B,
     ).await; 
 
-    self.k_i_omega_i = Some(k_B_omega_A.clone());
-     
     let delta_B = k_B * gamma_B + &k_B_gamma_A;
     let sigma_B = k_B * omega_B + &k_B_omega_A;
 
@@ -479,14 +457,6 @@ impl Signer {
       self.run_phase_2_Player_B().await
     }
 
-    println!("---> ACT: k_{:?} * gamma_{:?}: {:?}", self.signer_id, self.signer_id.the_other(), self.k_i_gamma_i);
-    //println!("---> ACT: k_{:?} * omega_{:?}: {:?}", self.signer_id, self.signer_id.the_other(), self.k_i_omega_i);
-
-    let k_A = Scalar { d: [1895104715543811988, 12, 0, 0] };
-    let gamma_B = Scalar { d: [3128132900, 0, 0, 0] }; 
-    let k_A_gamma_B= k_A * gamma_B;
-    println!("---> k_{:?} * gamma_{:?}: {:?}", self.signer_id, self.signer_id.the_other(), k_A_gamma_B);
-
     // Phase 3
     self.run_phase_3().await;
 
@@ -560,15 +530,13 @@ mod tests {
   async fn test_signing() {
     let num_generators = 3;
 
+    // group/field order for the secrets 
     let ss_order = secp256k1_group_order();
+
+    // requirement: n > {ss_order}^8
     let n = &ss_order.clone().pow(8u32);
 
-    // generate key shards 
-    let _generators = generate_keys(n, num_generators).await.unwrap();
-
-    // secp256k1 message is at most 256 bits
-
-    // sign using 2 key shards from generator 1 ans 2
+    // sign with 2 key shard sets from generator 1 and 2
     let num_signers = 2;
     let network = Arc::new(Network::new(num_signers));
     let pedersen = PedersenCommitment::new();
@@ -576,27 +544,25 @@ mod tests {
     // message M to sign in Z_n 
     let M = Scalar::rand();
 
-    let (p, q) = Paillier::gen_p_q(&ss_order);
-    let n = p.clone() * q.clone();
-    println!("Generated n={} bits, p={} bits, q={} bits", &n.significant_bits(), &p.significant_bits(), &q.significant_bits());
-    assert!(n.significant_bits() >= 256);
+    let _ = Paillier::gen_p_q(&ss_order);
 
-    // get pk and omegas from shards using lagrange interpolation
+    // calculate pk and omegas with lagrange interpolation
     let lambda_1_2 = Signer::calc_lambda_i_j(1, 2);
     let lambda_2_1 = Signer::calc_lambda_j_i(1, 2);
     assert_eq!(lambda_1_2, Scalar::from(2u8));
     assert_eq!(lambda_2_1, Scalar::from(1u8).neg());
 
-    //let omega_1 = lambda_1_2 * generators[0].x_i.unwrap();
-    //let omega_2 = lambda_2_1 * generators[1].x_i.unwrap();
-    let omega_1 = Scalar::from(3u32);
-    let omega_2 = Scalar::from(7u32);
+    // generate key shard sets 
+    let generators = generate_keys(n, num_generators).await.unwrap();
 
-    //let pk = 
-    //  generators[0].X_i.unwrap() * lambda_1_2 +
-    //  generators[1].X_i.unwrap() * lambda_2_1;
-    let pk = JacobianPoint::get_base_point() * (omega_1 + omega_2);
+    let omega_1 = lambda_1_2 * generators[0].x_i.unwrap();
+    let omega_2 = lambda_2_1 * generators[1].x_i.unwrap();
 
+    let pk = 
+      generators[0].X_i.unwrap() * lambda_1_2 +
+      generators[1].X_i.unwrap() * lambda_2_1;
+
+    // confirm that pk and omegas are consistent
     assert!(pk == JacobianPoint::get_base_point() * (omega_1 + omega_2));
 
     let mut signer_a = Signer::new(
@@ -629,9 +595,6 @@ mod tests {
       .into_iter()
       .map(|res| res.unwrap())
       .collect();
-
-    println!("--> Signatures A: {:?}", sigs[0]);
-    println!("--> Signatures B: {:?}", sigs[1]);
 
     let is_sig_valid = sigs[0].verify(
       &pk,
