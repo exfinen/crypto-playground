@@ -24,7 +24,7 @@ fn main() {
   let lib_path = Path::new(&lib_dir);
   if !lib_path.exists() {
     Command::new("sh")
-      .arg("autogen.sh")
+      .arg("./autogen.sh")
       .current_dir(&secp256k1_dir)
       .status()
       .expect("Failed to run autogen.sh");
