@@ -1,10 +1,12 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+use rug::Integer;
 use crate::building_block::secp256k1::jacobian_point::JacobianPoint;
 use crate::building_block::secp256k1::{
   jacobian_point::JacobianPoint as Point,
   scalar::Scalar,
+  util::secp256k1_group_order,
 };
 // use rug::Integer;
 use crate::protocols::gg18::{
@@ -29,11 +31,11 @@ use crate::protocols::gg18::{
 use std::sync::Arc;
 
 pub struct KeyGenerator {
+  n: Integer,
   generator_id: u32,
   num_generators: usize,
   network: Arc<Network>,
   pedersen: Arc<PedersenCommitment>,
-  num_n_bits: u32,
   // phase 1 result
   u_i: Option<Scalar>,
   dec_U_i: Option<Decommitment>,
@@ -54,18 +56,18 @@ const P_I: ValueId = ValueId(1);
 
 impl KeyGenerator {
   pub fn new(
+    n: &Integer,
     num_generators: usize,
     generator_id: u32,
     network: Arc<Network>,
     pedersen: Arc<PedersenCommitment>,
-    num_n_bits: u32,
   ) -> Self {
     Self {
+      n: n.clone(),
       num_generators,
       generator_id,
       network,
       pedersen,
-      num_n_bits, 
       //
       u_i: None,
       dec_U_i: None,
@@ -91,12 +93,10 @@ impl KeyGenerator {
     self.dec_U_i = Some(comm_pair.decomm);
 
     // broadcast E_i the public key for Paillier’s cryptosystem
-    let (p, q) = Paillier::gen_p_q(self.num_n_bits);
+    let ss_order = secp256k1_group_order();
+    let (p, q) = Paillier::gen_p_q(&ss_order);
     let paillier = Paillier::new(
-      256,
-      &p,
-      &q,
-      GCalcMethod::Random,
+      &p, &q, GCalcMethod::Random,
     );
     self.network.broadcast_with_index(
       &E_I_BCAST,
@@ -244,22 +244,23 @@ mod tests {
   use super::*;
   use tokio::spawn;
   use std::sync::Arc;
+  use rug::ops::Pow;
 
   #[tokio::test]
   async fn test_key_gen() -> Result<(), String> {
     let network = Arc::new(Network::new(3));
     let num_generators = 3;
     let pedersen = Arc::new(PedersenCommitment::new());
-    let num_n_bits = 6u32;
+    let n = secp256k1_group_order().pow(8); 
 
     let mut generators = vec![];
     for generator_id in 0..3 {
       let generator = KeyGenerator::new(
+        &n,
         num_generators,
         generator_id,
         Arc::clone(&network),
         Arc::clone(&pedersen),
-        num_n_bits,
       );
       generators.push(generator);
     }
