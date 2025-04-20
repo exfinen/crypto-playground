@@ -29,10 +29,10 @@ fn main() {
       .status()
       .expect("Failed to run autogen.sh");
 
-    Command::new("./configure")
-      .current_dir(&secp256k1_dir)
-      .status()
-      .expect("Failed to run configure");
+    //Command::new("./configure")
+    //  .current_dir(&secp256k1_dir)
+    //  .status()
+    //  .expect("Failed to run configure");
 
     Command::new("make")
       .args(["-j", &num_cpus::get().to_string()])
